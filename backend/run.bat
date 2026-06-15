@@ -1,0 +1,3 @@
+@echo off
+echo Starting FinSight AI Backend...
+python main.py
