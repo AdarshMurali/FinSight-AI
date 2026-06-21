@@ -1,0 +1,121 @@
+# ── Python virtual environments ───────────────────────────────────────────
+finsightaivenv/
+venv/
+.venv/
+env/
+ENV/
+.env/
+virtualenv/
+
+# ── Python compiled / cache ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+.Python
+
+# ── Python packaging ───────────────────────────────────────────────────────
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+wheels/
+develop-eggs/
+downloads/
+sdist/
+parts/
+var/
+lib64/
+.installed.cfg
+
+# ── Environment / secrets ──────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── ChromaDB persistent data ───────────────────────────────────────────────
+chroma_data/
+chromadb_data/
+.chromadb/
+chroma/
+*.chroma
+
+# ── Data / large files ─────────────────────────────────────────────────────
+Data/
+*.csv
+*.parquet
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+
+# ── Java / Flink JARs ─────────────────────────────────────────────────────
+*.jar
+flink/**/*.jar
+
+# ── Logs ──────────────────────────────────────────────────────────────────
+*.log
+logs/
+*.out
+
+# ── Testing / coverage ────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ── IDE / editors ─────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# ── OS files ──────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── Node / frontend ───────────────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+*.tsbuildinfo
+next-env.d.ts
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ── Docker ────────────────────────────────────────────────────────────────
+.docker/
+
+# ── Database files ────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Certificates ──────────────────────────────────────────────────────────
+*.pem
+*.key
+*.crt
+*.p12
