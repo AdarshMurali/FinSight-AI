@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+/* Custom theme tokens for Bloomberg dark palette */
+@theme {
+  --color-bg-primary:   #0a0a0f;
+  --color-bg-secondary: #111118;
+  --color-bg-tertiary:  #1a1a24;
+  --color-bg-border:    #2a2a3a;
+
+  --color-accent-blue:   #1e90ff;
+  --color-accent-green:  #00d084;
+  --color-accent-red:    #ff4d4d;
+  --color-accent-yellow: #f5c518;
+  --color-accent-purple: #a78bfa;
+
+  --color-text-primary:   #e8e8f0;
+  --color-text-secondary: #9898b0;
+  --color-text-muted:     #5a5a70;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: #0a0a0f;
+  color: #e8e8f0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #111118; }
+::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a4a; }
+
+/* P&L colour helpers */
+.positive { color: #00d084; }
+.negative { color: #ff4d4d; }
+.neutral  { color: #f5c518; }
+
+/* Table base */
+table { width: 100%; border-collapse: collapse; }
+th {
+  color: #9898b0;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #2a2a3a;
+}
+td { padding: 10px 12px; border-bottom: 1px solid #1a1a24; font-size: 0.8rem; }
+tr:hover td { background: #1a1a24; }
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.badge-high   { background: rgba(255,77,77,0.15);   color: #ff4d4d; }
+.badge-medium { background: rgba(245,197,24,0.15);  color: #f5c518; }
+.badge-low    { background: rgba(0,208,132,0.15);   color: #00d084; }
+.badge-blue   { background: rgba(30,144,255,0.15);  color: #1e90ff; }
+.badge-yellow { background: rgba(245,197,24,0.15);  color: #f5c518; }
+.badge-purple { background: rgba(167,139,250,0.15); color: #a78bfa; }
+
+/* Line-clamp utility */
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}

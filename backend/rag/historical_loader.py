@@ -5,6 +5,8 @@ import chromadb
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
+import time
+import requests
 from datetime import datetime, timedelta
 import pandas as pd
 import json
@@ -422,35 +424,159 @@ def load_company_news(tickers: list[str], collection):
         print(f"Loaded {len(docs)} total news articles to ChromaDB")
 
 
+def _build_fred_doc(series_id: str, name: str, category: str, date, value: float,
+                    prev_value: float = None, year_ago_value: float = None, unit: str = "") -> str:
+    """Build a rich natural-language document for a FRED data point."""
+    unit_str = unit if unit else ""
+    val_str = f"{value:.2f}{unit_str}"
+
+    doc = f"{name} was {val_str} in {date.strftime('%B %Y')}."
+
+    # Month-over-month change
+    if prev_value is not None and not pd.isna(prev_value) and prev_value != 0:
+        mom_chg = value - prev_value
+        mom_pct = (mom_chg / abs(prev_value)) * 100
+        direction = "up" if mom_chg > 0 else "down"
+        doc += f" This is {direction} {abs(mom_pct):.2f}% from the prior month ({prev_value:.2f}{unit_str})."
+
+    # Year-over-year change
+    if year_ago_value is not None and not pd.isna(year_ago_value) and year_ago_value != 0:
+        yoy_chg = value - year_ago_value
+        yoy_pct = (yoy_chg / abs(year_ago_value)) * 100
+        direction = "up" if yoy_chg > 0 else "down"
+        doc += f" Year-over-year it is {direction} {abs(yoy_pct):.2f}% from {year_ago_value:.2f}{unit_str}."
+
+    # Contextual thresholds
+    if series_id in ("CPIAUCSL", "PCEPILFE", "PCEPI"):
+        if value > 2.0:
+            doc += f" Inflation is above the Federal Reserve's 2% target."
+        elif value <= 2.0:
+            doc += f" Inflation is at or below the Federal Reserve's 2% target."
+
+    if series_id == "FEDFUNDS":
+        if value >= 5.0:
+            doc += " The Fed Funds Rate is in restrictive territory."
+        elif value <= 0.25:
+            doc += " The Fed Funds Rate is near zero, indicating accommodative monetary policy."
+
+    if series_id == "UNRATE":
+        if value >= 6.0:
+            doc += " Unemployment is elevated, signaling labor market weakness."
+        elif value <= 4.0:
+            doc += " Unemployment is low, indicating a tight labor market."
+
+    if series_id == "T10Y2Y":
+        if value < 0:
+            doc += f" The yield curve is inverted, a historically reliable recession indicator."
+        elif value > 1.5:
+            doc += f" The yield curve is steep, suggesting expectations of economic growth."
+
+    if series_id == "VIXCLS":
+        if value >= 30:
+            doc += f" VIX above 30 signals high market fear and elevated volatility."
+        elif value <= 15:
+            doc += f" VIX below 15 reflects market complacency and low perceived risk."
+
+    if series_id == "BAMLH0A0HYM2":
+        if value >= 600:
+            doc += f" High yield spreads above 600bps indicate stress in credit markets."
+        elif value <= 300:
+            doc += f" Tight high yield spreads signal strong risk appetite."
+
+    return doc
+
+
 def load_fred_macro(collection):
-    """Load FRED macro indicator summaries."""
+    """Load comprehensive FRED macro time series into the macro_indicators collection."""
     if not fred_client:
         print("FRED API key not configured, skipping macro data")
         return
 
+    # 40+ FRED series grouped by macro category
     series_map = {
-        "FEDFUNDS": ("Fed Funds Rate", "interest_rates"),
-        "CPIAUCSL": ("CPI Inflation", "inflation"),
-        "UNRATE": ("Unemployment Rate", "employment"),
-        "T10Y2Y": ("Yield Curve (10Y-2Y)", "yield_curve"),
-        "VIXCLS": ("VIX Volatility Index", "volatility"),
-        "GDP": ("US GDP Growth", "gdp"),
-        "DGS10": ("10-Year Treasury Yield", "interest_rates"),
+        # --- Monetary Policy / Interest Rates ---
+        "FEDFUNDS":   ("Effective Federal Funds Rate", "interest_rates", "%"),
+        "DGS1MO":     ("1-Month Treasury Yield", "interest_rates", "%"),
+        "DGS3MO":     ("3-Month Treasury Yield", "interest_rates", "%"),
+        "DGS6MO":     ("6-Month Treasury Yield", "interest_rates", "%"),
+        "DGS1":       ("1-Year Treasury Yield", "interest_rates", "%"),
+        "DGS2":       ("2-Year Treasury Yield", "interest_rates", "%"),
+        "DGS5":       ("5-Year Treasury Yield", "interest_rates", "%"),
+        "DGS10":      ("10-Year Treasury Yield", "interest_rates", "%"),
+        "DGS30":      ("30-Year Treasury Yield", "interest_rates", "%"),
+        "T10Y2Y":     ("Yield Curve Spread (10Y minus 2Y)", "yield_curve", "%"),
+        "T10Y3M":     ("Yield Curve Spread (10Y minus 3M)", "yield_curve", "%"),
+        "T10YIE":     ("10-Year Breakeven Inflation Rate", "inflation_expectations", "%"),
+        # --- Inflation ---
+        "CPIAUCSL":   ("Consumer Price Index (CPI All Items)", "inflation", ""),
+        "CPILFESL":   ("Core CPI (Excluding Food and Energy)", "inflation", ""),
+        "PCEPI":      ("PCE Price Index", "inflation", ""),
+        "PCEPILFE":   ("Core PCE Price Index (Fed's Preferred Inflation Gauge)", "inflation", ""),
+        "PPIFIS":     ("Producer Price Index (PPI Final Demand)", "inflation", ""),
+        # --- Employment ---
+        "UNRATE":     ("Unemployment Rate", "employment", "%"),
+        "U6RATE":     ("U-6 Underemployment Rate (Broadest Measure)", "employment", "%"),
+        "PAYEMS":     ("Total Nonfarm Payrolls", "employment", "K"),
+        "ICSA":       ("Initial Jobless Claims (Weekly)", "employment", ""),
+        "CIVPART":    ("Labor Force Participation Rate", "employment", "%"),
+        "EMRATIO":    ("Employment-Population Ratio", "employment", "%"),
+        "JTSJOL":     ("Job Openings (JOLTS)", "employment", "K"),
+        # --- Growth / GDP ---
+        "GDP":        ("US Nominal GDP", "gdp", "B$"),
+        "GDPC1":      ("US Real GDP (Inflation-Adjusted)", "gdp", "B$"),
+        "GDPCA":      ("US Real GDP Growth Rate (Annual)", "gdp", "%"),
+        # --- Consumer / Spending ---
+        "UMCSENT":    ("University of Michigan Consumer Sentiment Index", "consumer_sentiment", ""),
+        "RSAFS":      ("US Retail Sales (Advance)", "consumer_spending", "M$"),
+        "PSAVERT":    ("Personal Saving Rate", "consumer_spending", "%"),
+        # --- Housing ---
+        "CSUSHPISA":  ("Case-Shiller US Home Price Index", "housing", ""),
+        "MORTGAGE30US": ("30-Year Fixed Mortgage Rate", "housing", "%"),
+        "HOUST":      ("US Housing Starts", "housing", "K"),
+        "PERMIT":     ("US Building Permits", "housing", "K"),
+        # --- Money Supply ---
+        "M2SL":       ("M2 Money Supply", "money_supply", "B$"),
+        "BOGMBASE":   ("Monetary Base", "money_supply", "B$"),
+        # --- Credit / Market Stress ---
+        "VIXCLS":     ("CBOE VIX Volatility Index", "volatility", ""),
+        "BAMLH0A0HYM2": ("US High Yield Corporate Bond Spread (OAS)", "credit_spreads", "bps"),
+        "BAMLC0A0CM": ("US Investment Grade Corporate Bond Spread (OAS)", "credit_spreads", "bps"),
+        "TEDRATE":    ("TED Spread (LIBOR minus T-Bill)", "credit_spreads", "%"),
+        # --- Commodities & FX ---
+        "DCOILWTICO": ("WTI Crude Oil Price", "commodities", "$/bbl"),
+        "DEXUSEU":    ("USD to EUR Exchange Rate", "forex", ""),
+        "DEXJPUS":    ("Japanese Yen per USD", "forex", ""),
     }
 
     docs, metadatas, ids = [], [], []
+    total_series_loaded = 0
 
-    for series_id, (name, category) in series_map.items():
+    for series_id, (name, category, unit) in series_map.items():
         try:
-            print(f"Loading {name} ({series_id})...")
-            data = fred_client.get_series(series_id, observation_start="2019-01-01")
+            print(f"  Loading {name} ({series_id})...")
+            raw = fred_client.get_series(series_id, observation_start="2019-01-01")
 
-            # Create monthly summary documents
-            monthly = data.resample("M").last()
-            for date, value in monthly.items():
-                if pd.isna(value):
-                    continue
-                doc = f"{name} was {value:.2f} as of {date.strftime('%B %Y')}."
+            if raw.empty:
+                print(f"    No data returned for {series_id}")
+                continue
+
+            # Resample to monthly (last observation of each month)
+            monthly = raw.resample("ME").last().dropna()
+
+            series_docs = 0
+            for i, (date, value) in enumerate(monthly.items()):
+                prev_value = monthly.iloc[i - 1] if i > 0 else None
+                year_ago_value = monthly.iloc[i - 12] if i >= 12 else None
+
+                doc = _build_fred_doc(
+                    series_id, name, category, date, float(value),
+                    prev_value=float(prev_value) if prev_value is not None else None,
+                    year_ago_value=float(year_ago_value) if year_ago_value is not None else None,
+                    unit=unit
+                )
+                doc_id = f"fred_{series_id}_{date.strftime('%Y%m')}"
+
+                # Skip if already in collection (idempotent)
                 docs.append(doc)
                 metadatas.append({
                     "source": "fred",
@@ -459,18 +585,424 @@ def load_fred_macro(collection):
                     "date": date.strftime("%Y-%m-%d"),
                     "value": float(value),
                     "macro_category": category,
-                    "data_type": "macro_indicator"
+                    "unit": unit,
+                    "data_type": "macro_indicator",
+                    "event_type": "macro_data"
                 })
-                ids.append(f"fred_{series_id}_{date.strftime('%Y%m')}")
+                ids.append(doc_id)
+                series_docs += 1
 
-            print(f"  Loaded {len(monthly)} data points for {name}")
+            print(f"    Loaded {series_docs} monthly records")
+            total_series_loaded += 1
+
         except Exception as e:
-            print(f"  Error loading {name}: {e}")
+            print(f"    Error loading {series_id}: {e}")
 
     if docs:
-        embeddings = embed_texts(docs)
-        collection.add(documents=docs, embeddings=embeddings, metadatas=metadatas, ids=ids)
-        print(f"Loaded {len(docs)} FRED macro data points")
+        # Upsert in batches to avoid ChromaDB size limits
+        batch_size = 200
+        for i in range(0, len(docs), batch_size):
+            batch_docs = docs[i:i+batch_size]
+            batch_meta = metadatas[i:i+batch_size]
+            batch_ids = ids[i:i+batch_size]
+            embeddings = embed_texts(batch_docs)
+            collection.upsert(documents=batch_docs, embeddings=embeddings,
+                              metadatas=batch_meta, ids=batch_ids)
+
+        print(f"\nLoaded {len(docs)} FRED macro data points across {total_series_loaded} series")
+    else:
+        print("No FRED data loaded")
+
+
+def load_fed_communications(collection):
+    """Load Fed-related time series into the fed_communications collection.
+
+    Uses FRED series that represent FOMC decisions and Fed communications context:
+    rate decisions, dot plot signals, and balance sheet data.
+    """
+    if not fred_client:
+        print("FRED API key not configured, skipping Fed communications data")
+        return
+
+    fed_series = {
+        "DFEDTARU": ("Federal Funds Rate Upper Target", "rate_decision", "%"),
+        "DFEDTARL": ("Federal Funds Rate Lower Target", "rate_decision", "%"),
+        "WALCL":    ("Fed Balance Sheet Total Assets", "balance_sheet", "M$"),
+        "WRESBAL":  ("Reserve Balances at Federal Reserve Banks", "balance_sheet", "B$"),
+        "TREAST":   ("US Treasury Securities Held by the Fed", "balance_sheet", "M$"),
+        "WSHOMCB":  ("Mortgage-Backed Securities Held by the Fed", "balance_sheet", "M$"),
+        "EFFR":     ("Effective Federal Funds Rate (Daily, monthly avg)", "rate_decision", "%"),
+        "IOER":     ("Interest on Excess Reserves Rate", "rate_decision", "%"),
+        "IORB":     ("Interest Rate on Reserve Balances", "rate_decision", "%"),
+    }
+
+    docs, metadatas, ids = [], [], []
+
+    for series_id, (name, category, unit) in fed_series.items():
+        try:
+            print(f"  Loading {name} ({series_id})...")
+            raw = fred_client.get_series(series_id, observation_start="2019-01-01")
+
+            if raw.empty:
+                print(f"    No data for {series_id}")
+                continue
+
+            monthly = raw.resample("ME").last().dropna()
+
+            for i, (date, value) in enumerate(monthly.items()):
+                prev_value = monthly.iloc[i - 1] if i > 0 else None
+
+                doc = f"Federal Reserve {name} was {value:.2f}{unit} in {date.strftime('%B %Y')}."
+                if prev_value is not None and not pd.isna(prev_value):
+                    chg = value - float(prev_value)
+                    if abs(chg) >= 0.01:
+                        direction = "raised" if chg > 0 else "lowered"
+                        doc += f" The Fed {direction} this by {abs(chg):.2f}{unit} from the prior month."
+
+                # Balance sheet context
+                if series_id == "WALCL":
+                    if value > 8_000_000:
+                        doc += " The Fed balance sheet is historically elevated, reflecting quantitative easing."
+                    elif value < 4_000_000:
+                        doc += " The Fed balance sheet is at pre-QE levels."
+
+                docs.append(doc)
+                metadatas.append({
+                    "source": "fred",
+                    "series_id": series_id,
+                    "series_name": name,
+                    "date": date.strftime("%Y-%m-%d"),
+                    "value": float(value),
+                    "fed_category": category,
+                    "unit": unit,
+                    "data_type": "fed_communication",
+                    "event_type": "monetary_policy"
+                })
+                ids.append(f"fed_{series_id}_{date.strftime('%Y%m')}")
+
+            print(f"    Loaded {len(monthly)} records")
+        except Exception as e:
+            print(f"    Error loading {series_id}: {e}")
+
+    if docs:
+        batch_size = 200
+        for i in range(0, len(docs), batch_size):
+            batch_docs = docs[i:i+batch_size]
+            batch_meta = metadatas[i:i+batch_size]
+            batch_ids = ids[i:i+batch_size]
+            embeddings = embed_texts(batch_docs)
+            collection.upsert(documents=batch_docs, embeddings=embeddings,
+                              metadatas=batch_meta, ids=batch_ids)
+
+        print(f"\nLoaded {len(docs)} Fed communications data points")
+
+
+def load_sec_edgar(tickers: list[str], collection, years: int = 5):
+    """Load SEC EDGAR XBRL financial facts for given tickers into earnings_filings collection.
+
+    Uses SEC's public REST API — no API key required.
+    Fetches quarterly and annual income statement + balance sheet data for each ticker.
+    Rate-limited to ~8 requests/second to stay within SEC guidelines.
+    """
+    HEADERS = {
+        "User-Agent": "FinSightAI adarsh.5.88@gmail.com",
+        "Accept-Encoding": "gzip, deflate",
+    }
+    REQUEST_DELAY = 0.15  # SEC allows ~10 req/sec; 0.15s gives comfortable headroom
+
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=365 * years)
+    start_str = start_dt.strftime("%Y-%m-%d")
+    end_str = end_dt.strftime("%Y-%m-%d")
+
+    # --- Step 1: Fetch ticker -> zero-padded CIK mapping ---
+    print("  Fetching ticker-to-CIK mapping from SEC EDGAR...")
+    try:
+        resp = requests.get(
+            "https://www.sec.gov/files/company_tickers.json",
+            headers=HEADERS, timeout=30
+        )
+        resp.raise_for_status()
+        ticker_to_cik = {
+            v["ticker"]: str(v["cik_str"]).zfill(10)
+            for v in resp.json().values()
+        }
+        print(f"  Loaded {len(ticker_to_cik)} tickers from SEC EDGAR")
+    except Exception as e:
+        print(f"  Failed to fetch CIK mapping: {e}")
+        return
+
+    # --- Income statement metrics (duration-based, quarterly + annual) ---
+    # Format: (us-gaap concept, label, unit)
+    INCOME_METRICS = [
+        ("Revenues",                                              "Revenue",             "B$"),
+        ("RevenueFromContractWithCustomerExcludingAssessedTax",   "Revenue",             "B$"),
+        ("SalesRevenueNet",                                       "Revenue",             "B$"),
+        ("GrossProfit",                                           "Gross Profit",        "B$"),
+        ("OperatingIncomeLoss",                                   "Operating Income",    "B$"),
+        ("NetIncomeLoss",                                         "Net Income",          "B$"),
+        ("EarningsPerShareDiluted",                               "EPS Diluted",         "$/share"),
+        ("ResearchAndDevelopmentExpense",                         "R&D Expense",         "B$"),
+        ("SellingGeneralAndAdministrativeExpense",                "SG&A Expense",        "B$"),
+        ("NetCashProvidedByUsedInOperatingActivities",            "Operating Cash Flow", "B$"),
+        ("PaymentsToAcquirePropertyPlantAndEquipment",            "CapEx",               "B$"),
+    ]
+
+    # --- Balance sheet metrics (instant / point-in-time) ---
+    BALANCE_METRICS = [
+        ("Assets",                                    "Total Assets",         "B$"),
+        ("Liabilities",                               "Total Liabilities",    "B$"),
+        ("StockholdersEquity",                        "Stockholders Equity",  "B$"),
+        ("CashAndCashEquivalentsAtCarryingValue",      "Cash & Equivalents",   "B$"),
+        ("LongTermDebt",                               "Long-Term Debt",       "B$"),
+        ("CommonStockSharesOutstanding",               "Shares Outstanding",   "M shares"),
+    ]
+
+    docs: list[str] = []
+    metadatas: list[dict] = []
+    ids: list[str] = []
+
+    for ticker in tickers:
+        # SEC uses hyphens/periods differently — try original then swapped
+        sec_ticker = ticker.replace("-", ".")
+        cik = ticker_to_cik.get(ticker) or ticker_to_cik.get(sec_ticker)
+
+        if not cik:
+            print(f"  [{ticker}] CIK not found in SEC mapping, skipping")
+            continue
+
+        print(f"  [{ticker}] Fetching XBRL facts (CIK {cik})...")
+        time.sleep(REQUEST_DELAY)
+
+        try:
+            resp = requests.get(
+                f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
+                headers=HEADERS, timeout=60
+            )
+            resp.raise_for_status()
+            facts = resp.json()
+        except requests.exceptions.HTTPError as e:
+            code = e.response.status_code if e.response else "?"
+            print(f"  [{ticker}] HTTP {code} — skipping")
+            continue
+        except Exception as e:
+            print(f"  [{ticker}] Error fetching XBRL: {e}")
+            continue
+
+        company_name = facts.get("entityName", ticker)
+        us_gaap = facts.get("facts", {}).get("us-gaap", {})
+        ticker_count = 0
+
+        # ---- Income statement (duration entries) ----
+        found_revenue = False
+        for concept, label, unit in INCOME_METRICS:
+            # Use only the first matching revenue concept
+            if label == "Revenue" and found_revenue:
+                continue
+
+            concept_data = us_gaap.get(concept)
+            if not concept_data:
+                continue
+
+            is_per_share = "share" in unit.lower()
+            unit_key = "USD/shares" if is_per_share else "USD"
+            raw_entries = concept_data.get("units", {}).get(unit_key, [])
+            if not raw_entries:
+                continue
+
+            # Keep one entry per (period_end, report_type), preferring latest filed
+            seen: dict[tuple, dict] = {}
+            for entry in raw_entries:
+                start = entry.get("start")
+                end = entry.get("end", "")
+                form = entry.get("form", "")
+                filed = entry.get("filed", "")
+
+                if not start or not end:
+                    continue
+                if form not in ("10-Q", "10-K"):
+                    continue
+                if end < start_str or end > end_str:
+                    continue
+
+                try:
+                    duration = (pd.Timestamp(end) - pd.Timestamp(start)).days
+                except Exception:
+                    continue
+
+                is_annual = 340 <= duration <= 390
+                is_quarterly = 75 <= duration <= 105
+                if not (is_quarterly or is_annual):
+                    continue
+
+                key = (end, "annual" if is_annual else "quarterly")
+                if key not in seen or filed > seen[key].get("filed", ""):
+                    seen[key] = {**entry, "_annual": is_annual}
+
+            if label == "Revenue" and seen:
+                found_revenue = True
+
+            for (period_end, _period_type), entry in sorted(seen.items()):
+                val = entry.get("val")
+                if val is None:
+                    continue
+
+                filed = entry.get("filed", "N/A")
+                is_annual = entry["_annual"]
+                form = entry.get("form", "")
+
+                # Scale large USD values to billions
+                if not is_per_share and abs(val) >= 1_000_000:
+                    display_val = val / 1_000_000_000
+                    display_unit = "B$"
+                else:
+                    display_val = val
+                    display_unit = unit
+
+                try:
+                    ts = pd.Timestamp(period_end)
+                    period_str = ts.strftime("%B %Y")
+                    q_num = (ts.month - 1) // 3 + 1
+                    fiscal_q = f"{'FY' if is_annual else f'Q{q_num}'} {ts.year}"
+                except Exception:
+                    period_str = period_end
+                    fiscal_q = period_end
+
+                report_type = "annual" if is_annual else "quarterly"
+                doc = (
+                    f"{company_name} ({ticker}) {report_type} {label} was "
+                    f"${display_val:.2f}{display_unit} for {fiscal_q} "
+                    f"(period ending {period_str}, filed {filed})."
+                )
+                doc_id = f"sec_{ticker}_{concept}_{period_end}_{report_type}"
+                if doc_id in ids:
+                    continue
+
+                docs.append(doc)
+                metadatas.append({
+                    "source": "sec_edgar",
+                    "ticker": ticker,
+                    "company_name": company_name,
+                    "cik": cik,
+                    "metric": label,
+                    "concept": concept,
+                    "value": float(display_val),
+                    "unit": display_unit,
+                    "period_end": period_end,
+                    "filed_date": filed,
+                    "form_type": form,
+                    "fiscal_period": fiscal_q,
+                    "report_type": report_type,
+                    "data_type": "financial_filing",
+                    "event_type": "earnings_report",
+                })
+                ids.append(doc_id)
+                ticker_count += 1
+
+        # ---- Balance sheet (instant entries — no 'start' field) ----
+        for concept, label, unit in BALANCE_METRICS:
+            concept_data = us_gaap.get(concept)
+            if not concept_data:
+                continue
+
+            is_shares = "shares" in unit.lower()
+            unit_key = "shares" if is_shares else "USD"
+            raw_entries = concept_data.get("units", {}).get(unit_key, [])
+            if not raw_entries:
+                continue
+
+            seen: dict[str, dict] = {}
+            for entry in raw_entries:
+                if entry.get("start"):  # Skip duration entries for balance sheet
+                    continue
+                end = entry.get("end", "")
+                form = entry.get("form", "")
+                filed = entry.get("filed", "")
+
+                if form not in ("10-Q", "10-K"):
+                    continue
+                if end < start_str or end > end_str:
+                    continue
+
+                if end not in seen or filed > seen[end].get("filed", ""):
+                    seen[end] = entry
+
+            for period_end, entry in sorted(seen.items()):
+                val = entry.get("val")
+                if val is None:
+                    continue
+
+                filed = entry.get("filed", "N/A")
+                form = entry.get("form", "")
+
+                if is_shares and abs(val) >= 1_000_000:
+                    display_val = val / 1_000_000
+                    display_unit = "M shares"
+                elif not is_shares and abs(val) >= 1_000_000:
+                    display_val = val / 1_000_000_000
+                    display_unit = "B$"
+                else:
+                    display_val = val
+                    display_unit = unit
+
+                try:
+                    ts = pd.Timestamp(period_end)
+                    period_str = ts.strftime("%B %Y")
+                    q_num = (ts.month - 1) // 3 + 1
+                    is_annual = form == "10-K"
+                    fiscal_q = f"{'FY' if is_annual else f'Q{q_num}'} {ts.year}"
+                except Exception:
+                    period_str = period_end
+                    fiscal_q = period_end
+
+                report_type = "annual" if form == "10-K" else "quarterly"
+                doc = (
+                    f"{company_name} ({ticker}) {label} was "
+                    f"${display_val:.2f}{display_unit} as of {period_str} "
+                    f"({report_type} filing, filed {filed})."
+                )
+                doc_id = f"sec_{ticker}_{concept}_{period_end}"
+                if doc_id in ids:
+                    continue
+
+                docs.append(doc)
+                metadatas.append({
+                    "source": "sec_edgar",
+                    "ticker": ticker,
+                    "company_name": company_name,
+                    "cik": cik,
+                    "metric": label,
+                    "concept": concept,
+                    "value": float(display_val),
+                    "unit": display_unit,
+                    "period_end": period_end,
+                    "filed_date": filed,
+                    "form_type": form,
+                    "fiscal_period": fiscal_q,
+                    "report_type": report_type,
+                    "data_type": "financial_filing",
+                    "event_type": "balance_sheet",
+                })
+                ids.append(doc_id)
+                ticker_count += 1
+
+        print(f"    Loaded {ticker_count} records for {ticker}")
+        time.sleep(REQUEST_DELAY)
+
+    if docs:
+        batch_size = 200
+        for i in range(0, len(docs), batch_size):
+            batch_docs = docs[i:i + batch_size]
+            batch_meta = metadatas[i:i + batch_size]
+            batch_ids = ids[i:i + batch_size]
+            embeddings = embed_texts(batch_docs)
+            collection.upsert(
+                documents=batch_docs, embeddings=embeddings,
+                metadatas=batch_meta, ids=batch_ids
+            )
+        print(f"\nLoaded {len(docs)} SEC EDGAR financial records to ChromaDB")
+    else:
+        print("No SEC EDGAR data loaded")
 
 
 if __name__ == "__main__":
@@ -486,7 +1018,9 @@ if __name__ == "__main__":
     parser.add_argument("--earnings", action="store_true", default=True, help="Load earnings data")
     parser.add_argument("--analysts", action="store_true", default=True, help="Load analyst recommendations")
     parser.add_argument("--news", action="store_true", default=True, help="Load company news")
-    parser.add_argument("--macro", action="store_true", default=True, help="Load macro indicators")
+    parser.add_argument("--macro", action="store_true", default=True, help="Load FRED macro indicators")
+    parser.add_argument("--fed", action="store_true", default=True, help="Load Fed communications / balance sheet")
+    parser.add_argument("--edgar", action="store_true", default=False, help="Load SEC EDGAR XBRL financial facts")
 
     args = parser.parse_args()
 
@@ -516,6 +1050,15 @@ if __name__ == "__main__":
         load_company_news(args.tickers, collections["market_news"])
 
     if args.macro:
+        print("\n[*] Loading FRED macro indicators (40+ series)...")
         load_fred_macro(collections["macro_indicators"])
 
-    print("\n✅ Data loading complete!")
+    if args.fed:
+        print("\n[*] Loading Fed communications and balance sheet data...")
+        load_fed_communications(collections["fed_communications"])
+
+    if args.edgar:
+        print("\n[*] Loading SEC EDGAR XBRL financial facts...")
+        load_sec_edgar(args.tickers, collections["earnings_filings"], years=args.years)
+
+    print("\n[+] Data loading complete!")

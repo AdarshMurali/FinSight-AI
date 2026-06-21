@@ -34,11 +34,33 @@
 - Database: SQLAlchemy + MSSQL
 - All dependencies installed in finsightaivenv
 
-### Phase 3: AI/LLM Integration - PENDING
-- ⏸️ Task 3.1: LLM Integration Setup
-- ⏸️ Task 3.2: AI Analysis Modules
-- ⏸️ Task 3.3: RAG System with ChromaDB
-- ⏸️ Task 3.4: MCP Integration
+### Phase 3: AI/LLM Integration - IN PROGRESS
+- ✅ Task 3.1: LLM Integration Setup - COMPLETED (2026-06-19)
+  - LLM abstraction layer: `backend/services/llm_service.py`
+  - Anthropic Claude model routing: Haiku (quick) / Sonnet (analysis/recommendations) / Opus (deep)
+  - Token and cost tracking per session (UsageRecord, get_usage_stats())
+  - Centralized PromptLibrary with 4 task-specific templates
+  - anthropic>=0.40.0 added to requirements.txt
+
+- ✅ Task 3.2: AI Analysis Modules - COMPLETED (2026-06-19)
+  - AIPortfolioExplainer: `backend/services/ai_portfolio_explainer.py`
+    → POST /api/analysis/ai/explain-portfolio
+  - AIChangeNarrator: `backend/services/ai_change_narrator.py`
+    → POST /api/analysis/ai/narrate-changes
+  - AIEventAnalyzer: `backend/services/ai_event_analyzer.py`
+    → POST /api/analysis/ai/analyze-event
+  - AIRecommendationEngine: `backend/services/ai_recommendation_engine.py`
+    → POST /api/analysis/ai/recommendations
+  - All 4 AI endpoints added to `backend/routers/analysis.py`
+  - RAG query engine updated to search all 10 collections
+
+- ✅ Task 3.3: RAG System with ChromaDB - COMPLETED (2026-06-18/19)
+  - ChromaDB running at localhost:8001 with 24,072+ documents across 10 collections
+  - Flink streaming pipeline: market_news (live, ~2min poll), volatility_events (pending market hours)
+  - Batch loaders: historical_loader.py (OHLCV, macro, SEC, news), analyst_research_loader.py
+  - RAG query engine: backend/rag/query_engine.py (searches all 10 collections)
+
+- ⏸️ Task 3.4: MCP Integration - PENDING (deferred)
 
 ### Phase 4: Frontend Development - PENDING
 ### Phase 5: Advanced Features - PENDING

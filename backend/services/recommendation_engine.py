@@ -29,7 +29,12 @@ class RecommendationEngine:
             raise ValueError(f"Portfolio {portfolio_id} not found")
 
         if not risk_tolerance:
-            risk_tolerance = portfolio.risk_profile or "medium"
+            # risk_profile lives on Customer, not Portfolio
+            customer_risk = (
+                portfolio.customer.risk_profile
+                if portfolio.customer else None
+            )
+            risk_tolerance = customer_risk or "medium"
 
         analysis = self.analyzer.analyze_portfolio_state(portfolio_id)
 

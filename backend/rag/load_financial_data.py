@@ -19,7 +19,7 @@ from historical_loader import (
 
 # Default S&P 500 index components (top 50)
 DEFAULT_TICKERS = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "BRK.B",
+    "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "BRK-B",
     "JPM", "JNJ", "V", "WMT", "PG", "MA", "INTC", "NFLX",
     "MCD", "DIS", "KO", "PEP", "ABT", "TMO", "MRK", "IBM",
     "CSCO", "CAT", "F", "GM", "BA", "HON", "UNP", "AXP",

@@ -160,3 +160,30 @@ class RecommendationRequest(BaseModel):
     portfolio_id: int
     risk_tolerance: Optional[str] = None
     optimization_goal: Optional[str] = "balanced"
+
+
+# ── Task 3.2: AI Analysis Request Schemas ─────────────────────────────────────
+
+class AIPortfolioExplainRequest(BaseModel):
+    portfolio_id: int
+    as_of_date: Optional[date] = None
+    question: Optional[str] = "Explain the current state and key drivers of this portfolio."
+
+
+class AIChangeNarrateRequest(BaseModel):
+    portfolio_id: int
+    start_date: date
+    end_date: date
+    threshold_percent: Optional[float] = 5.0
+
+
+class AIEventAnalyzeRequest(BaseModel):
+    event_id: int
+    portfolio_ids: Optional[List[int]] = None
+    depth: Optional[str] = "deep"
+
+
+class AIRecommendationRequest(BaseModel):
+    portfolio_id: int
+    risk_tolerance: Optional[str] = None
+    optimization_goal: Optional[str] = "balanced"

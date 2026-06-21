@@ -1,0 +1,130 @@
+# FinSight AI — Streaming Infrastructure
+# Runs alongside the existing ChromaDB container (port 8001)
+# Start: docker compose -f docker-compose-streaming.yml up -d --build
+# Stop:  docker compose -f docker-compose-streaming.yml down
+
+services:
+
+  # ── Zookeeper (Kafka dependency) ──────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    hostname: zookeeper
+    container_name: finsight-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
+  # ── Kafka Broker ──────────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka
+    container_name: finsight-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9101
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
+  # ── Kafka UI (browser dashboard at localhost:8080) ─────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: finsight-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: finsight
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
+  # ── Flink JobManager (coordinator + Web UI at localhost:8081) ─────────────
+  flink-jobmanager:
+    build:
+      context: ./backend/flink
+      dockerfile: Dockerfile
+    image: finsight-flink:1.18
+    container_name: finsight-flink-jobmanager
+    hostname: flink-jobmanager
+    command: jobmanager
+    ports:
+      - "8082:8081"
+    environment:
+      FLINK_PROPERTIES: "jobmanager.rpc.address: flink-jobmanager\nrest.bind-port: 8081\nstate.backend: filesystem\nstate.checkpoints.dir: file:///opt/flink/checkpoints\n"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend/flink:/opt/flink/jobs
+      - flink_checkpoints:/opt/flink/checkpoints
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
+  # ── Flink TaskManager (worker) ────────────────────────────────────────────
+  flink-taskmanager:
+    build:
+      context: ./backend/flink
+      dockerfile: Dockerfile
+    image: finsight-flink:1.18
+    container_name: finsight-flink-taskmanager
+    hostname: flink-taskmanager
+    command: taskmanager
+    depends_on:
+      - flink-jobmanager
+    environment:
+      FLINK_PROPERTIES: "jobmanager.rpc.address: flink-jobmanager\ntaskmanager.numberOfTaskSlots: 4\ntaskmanager.memory.process.size: 1728m\nstate.backend: filesystem\nstate.checkpoints.dir: file:///opt/flink/checkpoints\n"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend/flink:/opt/flink/jobs
+      - flink_checkpoints:/opt/flink/checkpoints
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
+# ── Named Volumes (persisted across restarts) ─────────────────────────────
+volumes:
+  zookeeper_data:
+    name: finsight_zookeeper_data
+  zookeeper_logs:
+    name: finsight_zookeeper_logs
+  kafka_data:
+    name: finsight_kafka_data
+  flink_checkpoints:
+    name: finsight_flink_checkpoints
+
+# ── Network ───────────────────────────────────────────────────────────────
+networks:
+  finsight-streaming:
+    name: finsight-streaming
+    driver: bridge

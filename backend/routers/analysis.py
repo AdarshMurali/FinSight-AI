@@ -7,12 +7,20 @@ from schemas import (
     PortfolioStateAnalysisRequest,
     PositionChangesRequest,
     EventImpactRequest,
-    RecommendationRequest
+    RecommendationRequest,
+    AIPortfolioExplainRequest,
+    AIChangeNarrateRequest,
+    AIEventAnalyzeRequest,
+    AIRecommendationRequest,
 )
 from services.portfolio_analyzer import PortfolioAnalyzer
 from services.position_detector import PositionChangeDetector
 from services.event_analyzer import EventImpactAnalyzer
 from services.recommendation_engine import RecommendationEngine
+from services.ai_portfolio_explainer import AIPortfolioExplainer
+from services.ai_change_narrator import AIChangeNarrator
+from services.ai_event_analyzer import AIEventAnalyzer
+from services.ai_recommendation_engine import AIRecommendationEngine
 
 router = APIRouter()
 
@@ -74,3 +82,97 @@ def get_recommendations(
         optimization_goal=request.optimization_goal
     )
     return recommendations
+
+
+# ── Task 3.2: AI Analysis Endpoints ──────────────────────────────────────────
+
+@router.post("/ai/explain-portfolio", response_model=Dict[str, Any])
+def ai_explain_portfolio(
+    request: AIPortfolioExplainRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    AI-powered portfolio state explanation.
+    Combines structured portfolio analytics with RAG market context
+    and Claude to produce a natural language explanation.
+    """
+    try:
+        explainer = AIPortfolioExplainer(db)
+        return explainer.explain(
+            portfolio_id=request.portfolio_id,
+            as_of_date=request.as_of_date,
+            question=request.question,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {e}")
+
+
+@router.post("/ai/narrate-changes", response_model=Dict[str, Any])
+def ai_narrate_changes(
+    request: AIChangeNarrateRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    AI-powered position change causality narrative.
+    Detects significant position changes and explains the market drivers
+    using news, macro data, and earnings context from ChromaDB.
+    """
+    try:
+        narrator = AIChangeNarrator(db)
+        return narrator.narrate(
+            portfolio_id=request.portfolio_id,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            threshold_percent=request.threshold_percent,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI narration failed: {e}")
+
+
+@router.post("/ai/analyze-event", response_model=Dict[str, Any])
+def ai_analyze_event(
+    request: AIEventAnalyzeRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    AI-powered market event impact analysis (uses Claude Opus for deep reasoning).
+    Analyzes direct exposure, second-order effects, and recommended actions.
+    """
+    try:
+        analyzer = AIEventAnalyzer(db)
+        return analyzer.analyze(
+            event_id=request.event_id,
+            portfolio_ids=request.portfolio_ids,
+            depth=request.depth,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI event analysis failed: {e}")
+
+
+@router.post("/ai/recommendations", response_model=Dict[str, Any])
+def ai_recommendations(
+    request: AIRecommendationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    AI-enhanced portfolio recommendations.
+    Combines quantitative rule-based analysis with market context
+    (analyst views, macro trends, news sentiment) via RAG + Claude.
+    """
+    try:
+        engine = AIRecommendationEngine(db)
+        return engine.recommend(
+            portfolio_id=request.portfolio_id,
+            risk_tolerance=request.risk_tolerance,
+            optimization_goal=request.optimization_goal,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI recommendations failed: {e}")
