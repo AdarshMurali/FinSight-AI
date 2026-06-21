@@ -1,4 +1,6 @@
+import json
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 
@@ -12,6 +14,7 @@ from schemas import (
     AIChangeNarrateRequest,
     AIEventAnalyzeRequest,
     AIRecommendationRequest,
+    AIChatRequest,
 )
 from services.portfolio_analyzer import PortfolioAnalyzer
 from services.position_detector import PositionChangeDetector
@@ -21,6 +24,7 @@ from services.ai_portfolio_explainer import AIPortfolioExplainer
 from services.ai_change_narrator import AIChangeNarrator
 from services.ai_event_analyzer import AIEventAnalyzer
 from services.ai_recommendation_engine import AIRecommendationEngine
+from services.ai_chat_service import AIChatService, SUGGESTED_QUESTIONS
 
 router = APIRouter()
 
@@ -176,3 +180,58 @@ def ai_recommendations(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI recommendations failed: {e}")
+
+
+# ── Task 4.3: AI Chat Streaming Endpoint ──────────────────────────────────────
+
+@router.get("/ai/chat/suggested-questions")
+def get_suggested_questions():
+    """Return the list of suggested starter questions for the chat UI."""
+    return {"questions": SUGGESTED_QUESTIONS}
+
+
+@router.post("/ai/chat")
+def ai_chat_stream(
+    request: AIChatRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Streaming conversational AI endpoint (Server-Sent Events).
+
+    Each chunk is emitted as:
+        data: {"token": "<text>"}\n\n
+    Terminated by:
+        data: [DONE]\n\n
+
+    The client assembles tokens into the full assistant response.
+    """
+    def event_stream():
+        try:
+            service = AIChatService(db)
+            history = [
+                {"role": m.role, "content": m.content}
+                for m in (request.conversation_history or [])
+            ]
+            for token in service.stream_response(
+                portfolio_id=request.portfolio_id,
+                user_message=request.message,
+                conversation_history=history,
+            ):
+                payload = json.dumps({"token": token}, ensure_ascii=False)
+                yield f"data: {payload}\n\n"
+        except ValueError as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': f'Chat failed: {e}'})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":        "keep-alive",
+        },
+    )

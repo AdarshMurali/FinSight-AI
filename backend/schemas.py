@@ -187,3 +187,16 @@ class AIRecommendationRequest(BaseModel):
     portfolio_id: int
     risk_tolerance: Optional[str] = None
     optimization_goal: Optional[str] = "balanced"
+
+
+# ── Task 4.3: AI Chat Schemas ─────────────────────────────────────────────────
+
+class ChatMessage(BaseModel):
+    role: str       # "user" | "assistant"
+    content: str
+
+
+class AIChatRequest(BaseModel):
+    portfolio_id: int
+    message: str
+    conversation_history: Optional[List[ChatMessage]] = []

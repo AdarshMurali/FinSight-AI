@@ -108,6 +108,68 @@ class LLMService:
 
         return resp.choices[0].message.content
 
+    def generate_stream(
+        self,
+        task_type: str = "analysis",
+        system_prompt: Optional[str] = None,
+        messages: Optional[list] = None,
+        prompt: Optional[str] = None,
+        max_tokens: int = 1500,
+    ):
+        """
+        Stream tokens from OpenAI as they arrive.
+        Pass `messages` for multi-turn chat (list of {role, content} dicts).
+        Pass `prompt` for single-turn (wraps it as a user message).
+        Yields str chunks. Caller is responsible for assembling the full response.
+        """
+        model = MODEL_ROUTING.get(task_type, MODEL_ROUTING["analysis"])
+        system = system_prompt or PromptLibrary.system_prompt(task_type)
+
+        if messages:
+            msg_list = [{"role": "system", "content": system}] + messages
+        elif prompt:
+            msg_list = [
+                {"role": "system", "content": system},
+                {"role": "user",   "content": prompt},
+            ]
+        else:
+            raise ValueError("Either messages or prompt must be provided")
+
+        stream = self._client.chat.completions.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=msg_list,
+            stream=True,
+        )
+
+        total_input  = 0
+        total_output = 0
+        t0 = time.time()
+
+        for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield delta.content
+            # collect usage from final chunk if provided
+            if hasattr(chunk, "usage") and chunk.usage:
+                total_input  = chunk.usage.prompt_tokens
+                total_output = chunk.usage.completion_tokens
+
+        latency = time.time() - t0
+        if total_input or total_output:
+            cost = (
+                total_input  / 1_000_000 * _INPUT_COST.get(model, 2.50) +
+                total_output / 1_000_000 * _OUTPUT_COST.get(model, 10.0)
+            )
+            self._usage.append(UsageRecord(
+                model=model,
+                task_type=task_type,
+                input_tokens=total_input,
+                output_tokens=total_output,
+                cost_usd=round(cost, 6),
+                latency_s=round(latency, 2),
+            ))
+
     def get_usage_stats(self) -> dict:
         """Return aggregated token and cost summary for this session."""
         if not self._usage:

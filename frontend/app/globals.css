@@ -1,77 +1,110 @@
 @import "tailwindcss";
 
-/* Custom theme tokens for Bloomberg dark palette */
+/* ── Bloomberg Terminal colour tokens ─────────────────────────────────────── */
 @theme {
-  --color-bg-primary:   #0a0a0f;
-  --color-bg-secondary: #111118;
-  --color-bg-tertiary:  #1a1a24;
-  --color-bg-border:    #2a2a3a;
+  --color-bg-primary:   #000000;
+  --color-bg-secondary: #0D0D0D;
+  --color-bg-tertiary:  #1A1A1A;
+  --color-bg-border:    #2A2A2A;
 
-  --color-accent-blue:   #1e90ff;
-  --color-accent-green:  #00d084;
-  --color-accent-red:    #ff4d4d;
-  --color-accent-yellow: #f5c518;
-  --color-accent-purple: #a78bfa;
+  --color-accent-blue:   #F5821F;
+  --color-accent-green:  #00CC44;
+  --color-accent-red:    #FF4040;
+  --color-accent-yellow: #FFB300;
+  --color-accent-purple: #FFB300;
 
-  --color-text-primary:   #e8e8f0;
-  --color-text-secondary: #9898b0;
-  --color-text-muted:     #5a5a70;
+  --color-text-primary:   #E0E0E0;
+  --color-text-secondary: #888888;
+  --color-text-muted:     #555555;
 }
 
 * { box-sizing: border-box; }
 
 body {
-  background-color: #0a0a0f;
-  color: #e8e8f0;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  background-color: #000000;
+  color: #E0E0E0;
+  font-family: 'Consolas', 'Monaco', 'Lucida Console', 'Courier New', monospace;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar       { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #111118; }
-::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #3a3a4a; }
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: #F5821F; }
 
-/* P&L colour helpers */
-.positive { color: #00d084; }
-.negative { color: #ff4d4d; }
-.neutral  { color: #f5c518; }
+/* ── P&L helpers ───────────────────────────────────────────────────────────── */
+.positive { color: #00CC44; }
+.negative { color: #FF4040; }
+.neutral  { color: #FFB300; }
 
-/* Table base */
+/* ── Tables ────────────────────────────────────────────────────────────────── */
 table { width: 100%; border-collapse: collapse; }
 th {
-  color: #9898b0;
-  font-size: 0.7rem;
+  color: #F5821F;
+  font-size: 0.65rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 8px 12px;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  padding: 6px 12px;
   text-align: left;
-  border-bottom: 1px solid #2a2a3a;
+  border-bottom: 1px solid #2A2A2A;
+  background: #0D0D0D;
 }
-td { padding: 10px 12px; border-bottom: 1px solid #1a1a24; font-size: 0.8rem; }
-tr:hover td { background: #1a1a24; }
+td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #1A1A1A;
+  font-size: 0.75rem;
+  color: #E0E0E0;
+}
+tr:hover td { background: #1A1A1A; }
 
-/* Badges */
+/* ── Badges ────────────────────────────────────────────────────────────────── */
 .badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border: 1px solid;
 }
-.badge-high   { background: rgba(255,77,77,0.15);   color: #ff4d4d; }
-.badge-medium { background: rgba(245,197,24,0.15);  color: #f5c518; }
-.badge-low    { background: rgba(0,208,132,0.15);   color: #00d084; }
-.badge-blue   { background: rgba(30,144,255,0.15);  color: #1e90ff; }
-.badge-yellow { background: rgba(245,197,24,0.15);  color: #f5c518; }
-.badge-purple { background: rgba(167,139,250,0.15); color: #a78bfa; }
+.badge-high   { color: #FF4040; border-color: rgba(255,64,64,0.4);  background: rgba(255,64,64,0.08);  }
+.badge-medium { color: #FFB300; border-color: rgba(255,179,0,0.4);  background: rgba(255,179,0,0.08);  }
+.badge-low    { color: #00CC44; border-color: rgba(0,204,68,0.4);   background: rgba(0,204,68,0.08);   }
+.badge-blue   { color: #F5821F; border-color: rgba(245,130,31,0.4); background: rgba(245,130,31,0.08); }
+.badge-yellow { color: #FFB300; border-color: rgba(255,179,0,0.4);  background: rgba(255,179,0,0.08);  }
+.badge-purple { color: #FFB300; border-color: rgba(255,179,0,0.4);  background: rgba(255,179,0,0.08);  }
 
-/* Line-clamp utility */
+/* ── WebSocket value flash animations ──────────────────────────────────────── */
+@keyframes flash-up {
+  0%   { color: #00CC44; }
+  100% { color: inherit; }
+}
+@keyframes flash-down {
+  0%   { color: #FF4040; }
+  100% { color: inherit; }
+}
+.flash-up   { animation: flash-up   0.9s ease-out forwards; }
+.flash-down { animation: flash-down 0.9s ease-out forwards; }
+
+/* ── Event alert slide-in ───────────────────────────────────────────────────── */
+@keyframes slide-in {
+  from { transform: translateY(-8px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.alert-in { animation: slide-in 0.25s ease-out; }
+
+/* ── Line-clamp ────────────────────────────────────────────────────────────── */
 .line-clamp-1 {
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
+}
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }

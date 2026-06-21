@@ -4,31 +4,32 @@ interface StatCardProps {
   sub?: string;
   positive?: boolean;
   negative?: boolean;
-  accent?: "blue" | "green" | "red" | "yellow" | "purple";
+  accent?: "blue" | "green" | "red" | "yellow" | "purple" | "orange";
 }
 
-const accentColor = {
-  blue:   "text-[#1e90ff]",
-  green:  "text-[#00d084]",
-  red:    "text-[#ff4d4d]",
-  yellow: "text-[#f5c518]",
-  purple: "text-[#a78bfa]",
+const accentColor: Record<string, string> = {
+  blue:   "text-[#F5821F]",
+  orange: "text-[#F5821F]",
+  green:  "text-[#00CC44]",
+  red:    "text-[#FF4040]",
+  yellow: "text-[#FFB300]",
+  purple: "text-[#FFB300]",
 };
 
 export default function StatCard({ label, value, sub, positive, negative, accent }: StatCardProps) {
   const valueClass = positive
-    ? "text-[#00d084]"
+    ? "text-[#00CC44]"
     : negative
-    ? "text-[#ff4d4d]"
+    ? "text-[#FF4040]"
     : accent
-    ? accentColor[accent]
-    : "text-[#e8e8f0]";
+    ? (accentColor[accent] ?? "text-[#E0E0E0]")
+    : "text-[#E0E0E0]";
 
   return (
-    <div className="bg-[#111118] border border-[#2a2a3a] rounded-lg p-4">
-      <p className="text-[#9898b0] text-[10px] uppercase tracking-widest mb-2">{label}</p>
-      <p className={`text-xl font-semibold ${valueClass}`}>{value}</p>
-      {sub && <p className="text-[#5a5a70] text-[11px] mt-1">{sub}</p>}
+    <div className="bg-[#0D0D0D] border border-[#2A2A2A] p-4">
+      <p className="text-[#F5821F] text-[9px] font-bold tracking-[0.15em] uppercase mb-2">{label}</p>
+      <p className={`text-2xl font-bold tabular-nums ${valueClass}`}>{value}</p>
+      {sub && <p className="text-[#AAA] text-[10px] mt-1 tracking-wider uppercase">{sub}</p>}
     </div>
   );
 }

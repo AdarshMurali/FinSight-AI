@@ -48,6 +48,8 @@ Expected output: `FinSight_AI`
 
 ## Step 2 — ChromaDB
 
+ChromaDB holds 24,000+ document embeddings used by all AI features (AI Insights, AI Chat, recommendations).
+
 ### Start (if container already exists)
 ```powershell
 docker start FinSight_AI_chromadb
@@ -74,6 +76,13 @@ Expected: `{"nanosecond heartbeat": <number>}`
 ---
 
 ## Step 3 — Streaming Stack (Kafka + Flink)
+
+Optional for most features. Required only if you want:
+- Live Finnhub news flowing into ChromaDB (RAG enrichment)
+- Real market event alerts pushed to the Dashboard via WebSocket
+
+> **Without Kafka/Flink**: The Dashboard still shows live portfolio value ticks — the backend
+> price simulator runs automatically and requires no external services.
 
 ```powershell
 cd C:\Agentic_AI\FinSight-AI
@@ -115,6 +124,28 @@ Expected: `{"status": "healthy", "database": "connected"}`
 
 > If you see `"database": "disconnected"`, SQL Server is still starting up. Wait 10 seconds and retry.
 
+### Startup log — what to expect
+When the backend starts you should see:
+```
+Starting FinSight AI API...
+[OK]   Database connected
+[OK]   WebSocket background tasks started (price simulator + Kafka bridge)
+```
+The price simulator and Kafka bridge start automatically — no manual action needed.
+
+### Key API endpoints
+| Endpoint | Description |
+|---|---|
+| `GET /docs` | Swagger UI — all endpoints |
+| `GET /api/portfolios` | List portfolios |
+| `POST /api/analysis/ai/explain-portfolio` | AI portfolio explanation |
+| `POST /api/analysis/ai/narrate-changes` | AI position change narrative |
+| `POST /api/analysis/ai/recommendations` | AI-enhanced recommendations |
+| `POST /api/analysis/ai/chat` | Streaming chat SSE endpoint (Task 4.3) |
+| `GET /api/analysis/ai/chat/suggested-questions` | Suggested chat questions |
+| `ws://localhost:8000/ws` | **WebSocket — real-time portfolio + event feed (Task 4.2)** |
+| `GET /ws/stats` | Active WebSocket connection count (debug) |
+
 ---
 
 ## Step 5 — Next.js Frontend
@@ -128,11 +159,30 @@ npm run dev
 
 Open browser: **http://localhost:3000**
 
+### Pages available
+
+| Route | Live data? | Description |
+|---|---|---|
+| `/` | ✅ WebSocket | Dashboard — portfolio values flash green/red on every tick; Total AUM updates live; Kafka event alerts appear as toasts |
+| `/portfolios` | — | Portfolio list with strategy and value |
+| `/portfolios/[id]` | ✅ WebSocket | Portfolio detail — Total Value flashes with live Δ%; Wifi icon shows WS connection |
+| `/ai-insights` | — | AI Insights — 3-panel analysis (Explanation · Narrative · Recommendations) |
+| `/chat` | — | AI Chat — conversational Q&A with streaming GPT-4o responses |
+| `/market-events` | — | Market event timeline with impact levels |
+| `/market-events/[id]` | — | Event detail with affected portfolio list |
+
+> **UI theme**: Bloomberg Terminal style — pure black background, orange `#F5821F` accents, monospace font throughout.
+
+> **WebSocket**: connects automatically when the page loads. The indicator in the top bar shows
+> **● LIVE** (green) when connected and **● RECONNECTING** (amber) while retrying.
+> No configuration needed — it points to `ws://localhost:8000/ws` by default.
+
 ---
 
-## Step 6 — Flink Streaming Pipeline (Optional — for real-time data)
+## Step 6 — Flink Streaming Pipeline (Optional — for live data)
 
-Only needed if you want live news sentiment and volatility data flowing into ChromaDB.
+Only needed if you want live news sentiment and volatility data flowing into ChromaDB.  
+All AI features work without this using the existing batch-loaded RAG data.
 
 ### 6a — News Producer (24/7, polls every 2 minutes)
 Open a **third terminal**:
@@ -168,11 +218,17 @@ Run this after startup to verify everything is up:
 # Docker containers
 docker ps --format "table {{.Names}}`t{{.Status}}`t{{.Ports}}" | Select-String "sqlserver1|chromadb|finsight"
 
-# FastAPI
+# FastAPI (also confirms DB connection)
 Invoke-RestMethod http://localhost:8000/health
 
 # ChromaDB
 Invoke-RestMethod http://localhost:8001/api/v2/heartbeat
+
+# WebSocket active connections (should be 0 before browser opens, >0 after)
+Invoke-RestMethod http://localhost:8000/ws/stats
+
+# AI Chat endpoint (quick smoke test)
+Invoke-RestMethod http://localhost:8000/api/analysis/ai/chat/suggested-questions
 ```
 
 ---
@@ -181,12 +237,30 @@ Invoke-RestMethod http://localhost:8001/api/v2/heartbeat
 
 | Service | URL | Notes |
 |---|---|---|
-| **Frontend** | http://localhost:3000 | Next.js app |
+| **Frontend** | http://localhost:3000 | Next.js app — Bloomberg Terminal UI |
 | **Backend API** | http://localhost:8000 | FastAPI + Swagger at `/docs` |
-| **Kafka UI** | http://localhost:8080 | Monitor Kafka topics |
-| **Flink UI** | http://localhost:8082 | Monitor streaming jobs |
-| **ChromaDB** | http://localhost:8001 | Vector database |
+| **WebSocket feed** | ws://localhost:8000/ws | Real-time portfolio ticks + event alerts |
+| **WS stats** | http://localhost:8000/ws/stats | Active connection count |
+| **AI Chat** | http://localhost:3000/chat | Streaming conversational Q&A |
+| **AI Insights** | http://localhost:3000/ai-insights | 3-panel portfolio analysis |
+| **Kafka UI** | http://localhost:8080 | Monitor Kafka topics (optional) |
+| **Flink UI** | http://localhost:8082 | Monitor streaming jobs (optional) |
+| **ChromaDB** | http://localhost:8001 | Vector database (24,000+ docs) |
 | **SQL Server** | localhost:1433 | SA password: `Pakasu@5` |
+
+---
+
+## Environment Variables (backend/.env)
+
+| Variable | Used for |
+|---|---|
+| `OPENAI_API_KEY` | GPT-4o analysis, chat streaming, embeddings |
+| `FINNHUB_API_KEY` | Live news/trades Kafka producer |
+| `FRED_API_KEY` | Macroeconomic indicator RAG data |
+| `AlphaVantage_API_KEY` | Additional market data |
+| `DB_SERVER` / `DB_NAME` / `DB_USER` | SQL Server connection |
+
+> Never commit `backend/.env` to git — it is excluded by `.gitignore`.
 
 ---
 
@@ -202,6 +276,36 @@ Data is safe — stored in Docker volume `sqlserver_data`.
 
 ### ChromaDB low memory (~13MB after restart)
 Normal — it lazy-loads. Memory climbs to 250–500MB as collections are queried.
+
+### AI Chat returns empty or stalls
+1. Confirm backend is running: `Invoke-RestMethod http://localhost:8000/health`
+2. Confirm ChromaDB is up: `Invoke-RestMethod http://localhost:8001/api/v2/heartbeat`
+3. Check `OPENAI_API_KEY` is valid in `backend/.env`
+4. Check browser console for SSE connection errors (should see `text/event-stream` response)
+
+### AI Insights / AI Chat: "AI analysis failed"
+- Most common cause: invalid or expired `OPENAI_API_KEY`
+- Check backend terminal for the Python traceback
+
+### Dashboard shows RECONNECTING instead of LIVE
+The WebSocket connection to `ws://localhost:8000/ws` failed.
+1. Confirm the backend is running: `Invoke-RestMethod http://localhost:8000/health`
+2. Check the browser console (F12) for WebSocket errors
+3. The hook retries automatically with exponential backoff — it will reconnect once the backend is up
+4. After reconnecting the indicator turns green automatically with no page refresh needed
+
+### Dashboard values not ticking / no green-red flashes
+The price simulator starts automatically with the backend but only broadcasts when at least one
+browser tab is open on the Dashboard or Portfolio Detail page.
+1. Check `Invoke-RestMethod http://localhost:8000/ws/stats` — should show `{"active_connections": N}`
+   where N > 0 after you open the browser
+2. If N = 0 with the browser open, the WebSocket connection is failing (see above)
+3. Ticks arrive every ~4 seconds — wait a few seconds before assuming it's broken
+
+### Kafka event toasts not appearing on Dashboard
+The amber event toasts require the Kafka + Flink pipeline to be running (Step 3 + Step 6).
+Without Kafka, the price simulator still runs and portfolio values still tick — only the
+real-time Kafka event notifications are missing.
 
 ### Kafka topic `market.trades` missing
 Normal — topic auto-creates when the first trade message arrives. Run `finnhub_trade_producer.py` during market hours (Mon–Fri 9:30 AM–4:00 PM ET, excluding US holidays).
@@ -234,4 +338,28 @@ All data persists across container restarts in named Docker volumes. **Never del
 | `finsight_flink_checkpoints` | Flink | Job state checkpoints |
 
 > To list all volumes: `docker volume ls`  
-> To check a volume's disk usage: `docker system df -v`
+> To check disk usage: `docker system df -v`
+
+---
+
+## Minimal Startup (no streaming, no Kafka/Flink)
+
+If you only need the core app and AI features, just run Steps 1, 2, 4, and 5:
+
+```
+Step 1 → SQL Server
+Step 2 → ChromaDB
+Step 4 → FastAPI backend   ← price simulator + Kafka bridge start automatically
+Step 5 → Next.js frontend
+```
+
+**What works without Kafka/Flink:**
+- ✅ All pages load and function fully
+- ✅ Dashboard portfolio values tick live (price simulator, every 4 seconds)
+- ✅ Portfolio Detail Total Value flashes with live Δ%
+- ✅ AI Insights, AI Chat, AI Recommendations (use existing batch-loaded RAG data)
+- ✅ WebSocket LIVE indicator shows green
+
+**What requires Kafka/Flink (Step 3 + Step 6):**
+- ❌ Real-time Finnhub news flowing into ChromaDB for RAG enrichment
+- ❌ Kafka market event toast alerts on the Dashboard

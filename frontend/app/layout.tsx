@@ -3,16 +3,16 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 
 export const metadata: Metadata = {
-  title: "FinSight AI — Portfolio Intelligence",
-  description: "AI-powered hedge fund portfolio analysis",
+  title: "FinSight AI Terminal",
+  description: "AI-powered hedge fund portfolio intelligence",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-[#0a0a0f]">
+      <body className="min-h-screen bg-black">
         <Sidebar />
-        <main className="ml-56 min-h-screen p-6">{children}</main>
+        <main className="ml-52 min-h-screen p-5">{children}</main>
       </body>
     </html>
   );

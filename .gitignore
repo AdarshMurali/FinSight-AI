@@ -43,6 +43,10 @@ chromadb_data/
 chroma/
 *.chroma
 
+# ── Images / media ────────────────────────────────────────────────────────
+Images/
+images/
+
 # ── Data / large files ─────────────────────────────────────────────────────
 Data/
 *.csv
