@@ -1,0 +1,12 @@
+# FinSight AI — Flink EC2 market-hours cron schedule
+# Install with: crontab /home/ubuntu/FinSight-AI/aws/ec2-flink/crontab.txt
+#
+# Market hours: Mon-Fri 9:30 AM – 4:00 PM ET
+# UTC offsets:  ET = UTC-5 (EST Nov-Mar) / UTC-4 (EDT Mar-Nov)
+# Using UTC-4 (EDT, summer).  Adjust Nov-Mar: change 13 → 14, 20 → 21.
+#
+# Start at 9:25 AM EDT (13:25 UTC) — 5 min before market open
+25 13 * * 1-5 /home/ubuntu/FinSight-AI/aws/ec2-flink/start_pipeline.sh >> /var/log/finsight-cron.log 2>&1
+
+# Stop at 4:15 PM EDT (20:15 UTC) — 15 min after market close
+15 20 * * 1-5 /home/ubuntu/FinSight-AI/aws/ec2-flink/stop_pipeline.sh >> /var/log/finsight-cron.log 2>&1

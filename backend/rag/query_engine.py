@@ -7,8 +7,10 @@ from openai import OpenAI
 load_dotenv()
 
 class MarketRAGEngine:
-    def __init__(self, chroma_host="localhost", chroma_port=8001):
-        self.chroma = chromadb.HttpClient(host=chroma_host, port=chroma_port)
+    def __init__(self, chroma_host=None, chroma_port=None):
+        host = chroma_host or os.getenv("CHROMA_HOST", "localhost")
+        port = chroma_port or int(os.getenv("CHROMA_PORT", "8001"))
+        self.chroma = chromadb.HttpClient(host=host, port=port)
         openai_key = os.getenv("OPENAI_API_KEY")
         self.openai = OpenAI(api_key=openai_key)
         self.collections = [

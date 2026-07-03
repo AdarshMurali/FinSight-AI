@@ -7,13 +7,16 @@ import pyodbc
 
 def get_pyodbc_connection():
     """Get a direct pyodbc connection for simple queries"""
+    is_azure = "database.windows.net" in settings.DB_SERVER
     conn_str = (
-        f"Driver={{ODBC Driver 17 for SQL Server}};"
+        f"Driver={{{settings.DB_ODBC_DRIVER}}};"
         f"Server={settings.DB_SERVER},{settings.DB_PORT};"
         f"Database={settings.DB_NAME};"
         f"UID={settings.DB_USER};"
         f"PWD={settings.DB_PASSWORD};"
     )
+    if is_azure:
+        conn_str += "Encrypt=yes;TrustServerCertificate=no;"
     return pyodbc.connect(conn_str)
 
 

@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   getPortfolios,
   getSuggestedQuestions,
@@ -17,13 +19,40 @@ function Cursor() {
   );
 }
 
+// ── Tool call chips shown inside the assistant bubble ─────────────────────────
+function ToolChips({ tools }: { tools: string[] }) {
+  if (!tools.length) return null;
+  const labels: Record<string, string> = {
+    get_portfolio_data:   "PORTFOLIO DATA",
+    get_position_history: "POSITION HISTORY",
+    search_market_context:"MARKET CONTEXT",
+    get_market_events:    "MARKET EVENTS",
+    run_risk_analysis:    "RISK ANALYSIS",
+  };
+  return (
+    <div className="flex flex-wrap gap-1 mb-2 pb-2 border-b border-[#1A1A1A]">
+      {tools.map((t, i) => (
+        <span
+          key={i}
+          className="text-[8px] font-bold tracking-wider px-2 py-0.5 border"
+          style={{ color: "#F5821F", borderColor: "rgba(245,130,31,0.25)", background: "rgba(245,130,31,0.06)" }}
+        >
+          ▸ {labels[t] ?? t.replace(/_/g, " ").toUpperCase()}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ── Single chat bubble ────────────────────────────────────────────────────────
 function Bubble({
   msg,
   isStreaming,
+  toolCalls,
 }: {
   msg: ChatMessage;
   isStreaming?: boolean;
+  toolCalls?: string[];
 }) {
   const isUser = msg.role === "user";
 
@@ -46,8 +75,27 @@ function Bubble({
         <p className="text-[#F5821F] text-[9px] font-bold tracking-[0.15em] mb-1">
           FINSIGHT AI
         </p>
-        <div className="bg-[#0D0D0D] border border-[#2A2A2A] text-[#E0E0E0] text-[11px] px-4 py-3 leading-6 whitespace-pre-wrap">
-          {msg.content}
+        <div className="bg-[#0D0D0D] border border-[#2A2A2A] text-[#E0E0E0] text-[11px] px-4 py-3 leading-6">
+          <ToolChips tools={toolCalls ?? []} />
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              h1: ({ children }) => <p className="text-[#F5821F] font-bold tracking-wider mt-3 mb-1">{children}</p>,
+              h2: ({ children }) => <p className="text-[#F5821F] font-bold tracking-wider mt-3 mb-1">{children}</p>,
+              h3: ({ children }) => <p className="text-[#F5821F] font-bold tracking-wider mt-3 mb-1">{children}</p>,
+              strong: ({ children }) => <span className="text-white font-bold">{children}</span>,
+              em: ({ children }) => <span className="text-[#AAA] italic">{children}</span>,
+              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+              ul: ({ children }) => <ul className="list-disc list-inside space-y-0.5 mb-2">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal list-inside space-y-0.5 mb-2">{children}</ol>,
+              li: ({ children }) => <li className="text-[#E0E0E0]">{children}</li>,
+              code: ({ children }) => <code className="bg-[#1A1A1A] text-[#F5821F] px-1 rounded text-[10px]">{children}</code>,
+              pre: ({ children }) => <pre className="bg-[#1A1A1A] p-2 rounded text-[10px] overflow-x-auto mb-2">{children}</pre>,
+              hr: () => <hr className="border-[#2A2A2A] my-2" />,
+            }}
+          >
+            {msg.content}
+          </ReactMarkdown>
           {isStreaming && <Cursor />}
         </div>
       </div>
@@ -82,6 +130,7 @@ export default function ChatPage() {
   const [input, setInput]                   = useState("");
   const [streaming, setStreaming]           = useState(false);
   const [error, setError]                   = useState("");
+  const [streamingToolCalls, setStreamingToolCalls] = useState<string[]>([]);
   const [loadingInit, setLoadingInit]       = useState(true);
   const [showPortfolioMenu, setShowPortfolioMenu] = useState(false);
 
@@ -113,6 +162,7 @@ export default function ChatPage() {
 
     setInput("");
     setError("");
+    setStreamingToolCalls([]);
 
     const userMsg: ChatMessage = { role: "user", content: trimmed };
     const newMessages = [...messages, userMsg];
@@ -147,6 +197,8 @@ export default function ChatPage() {
       (err) => setError(err),
       // onDone
       () => setStreaming(false),
+      // onToolCall — accumulate tool names for display in the bubble
+      (toolName) => setStreamingToolCalls(prev => [...prev, toolName]),
     );
   }
 
@@ -263,7 +315,7 @@ export default function ChatPage() {
                 Ask anything about this portfolio
               </p>
               <p className="text-[#555] text-[10px] mt-1 tracking-wider">
-                Powered by GPT-4o · grounded in live portfolio data + ChromaDB RAG
+                Agentic GPT-4o · calls live tools on demand · ChromaDB RAG
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 w-full max-w-xl">
@@ -286,6 +338,7 @@ export default function ChatPage() {
                 key={i}
                 msg={msg}
                 isStreaming={streaming && i === messages.length - 1 && msg.role === "assistant"}
+                toolCalls={i === messages.length - 1 && msg.role === "assistant" ? streamingToolCalls : undefined}
               />
             ))}
           </div>
@@ -311,9 +364,15 @@ export default function ChatPage() {
           {streaming && (
             <>
               <span className="text-[#3A3A3A]">│</span>
-              <span className="text-[#F5821F] text-[9px] tracking-wider animate-pulse">
-                ● GENERATING...
-              </span>
+              {streamingToolCalls.length > 0 && streamBuf.current === "" ? (
+                <span className="text-[#F5821F] text-[9px] tracking-wider animate-pulse">
+                  ● CALLING: {streamingToolCalls[streamingToolCalls.length - 1].replace(/_/g, "_").toUpperCase()}
+                </span>
+              ) : (
+                <span className="text-[#F5821F] text-[9px] tracking-wider animate-pulse">
+                  ● GENERATING...
+                </span>
+              )}
             </>
           )}
         </div>

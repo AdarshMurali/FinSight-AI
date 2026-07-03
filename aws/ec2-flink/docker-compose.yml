@@ -1,0 +1,135 @@
+# Flink + Kafka — AWS EC2 t3.medium (Scheduled: market hours only)
+# Memory-optimised for t3.medium (4 GB RAM).
+# Fill in KAFKA_EXTERNAL_IP and CHROMADB_EC2_IP before first run.
+# Start: docker compose -f docker-compose.yml up -d
+# Stop:  docker compose -f docker-compose.yml down
+
+services:
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    hostname: zookeeper
+    container_name: finsight-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_HEAP_OPTS: "-Xmx128m -Xms128m"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka
+    container_name: finsight-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # PLAINTEXT_HOST uses the Elastic IP so your laptop trade producer can reach Kafka
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://${KAFKA_EXTERNAL_IP}:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms256m"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: finsight-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: finsight
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
+  flink-jobmanager:
+    build:
+      context: /home/ec2-user/FinSight-AI/backend/flink
+      dockerfile: Dockerfile
+    image: finsight-flink:1.18
+    container_name: finsight-flink-jobmanager
+    hostname: flink-jobmanager
+    command: jobmanager
+    ports:
+      - "8082:8081"
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.memory.process.size: 800m
+        rest.bind-port: 8081
+        state.backend: filesystem
+        state.checkpoints.dir: file:///opt/flink/checkpoints
+      CHROMA_HOST: ${CHROMADB_EC2_IP}
+      CHROMA_PORT: "8001"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+    env_file:
+      - .env
+    volumes:
+      - /home/ec2-user/FinSight-AI/backend/flink:/opt/flink/jobs
+      - flink_checkpoints:/opt/flink/checkpoints
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
+  flink-taskmanager:
+    build:
+      context: /home/ec2-user/FinSight-AI/backend/flink
+      dockerfile: Dockerfile
+    image: finsight-flink:1.18
+    container_name: finsight-flink-taskmanager
+    hostname: flink-taskmanager
+    command: taskmanager
+    depends_on:
+      - flink-jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 1536m
+        state.backend: filesystem
+        state.checkpoints.dir: file:///opt/flink/checkpoints
+      CHROMA_HOST: ${CHROMADB_EC2_IP}
+      CHROMA_PORT: "8001"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+    env_file:
+      - .env
+    volumes:
+      - /home/ec2-user/FinSight-AI/backend/flink:/opt/flink/jobs
+      - flink_checkpoints:/opt/flink/checkpoints
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
+volumes:
+  zookeeper_data:
+  zookeeper_logs:
+  kafka_data:
+  flink_checkpoints:
+
+networks:
+  finsight-streaming:
+    name: finsight-streaming
+    driver: bridge

@@ -1,11 +1,14 @@
 # backend/rag/chromadb_setup.py
+import os
 import chromadb
 from chromadb.config import Settings
 
 def get_chroma_client():
+    host = os.getenv("CHROMA_HOST", "localhost")
+    port = int(os.getenv("CHROMA_PORT", "8001"))
     return chromadb.HttpClient(
-        host="localhost",
-        port=8001,
+        host=host,
+        port=port,
         settings=Settings(anonymized_telemetry=False)
     )
 

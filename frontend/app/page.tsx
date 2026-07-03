@@ -6,6 +6,17 @@ import { useWebSocket, WsMessage } from "@/hooks/useWebSocket";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { ArrowRight, ChevronRight, X } from "lucide-react";
 
+// ── Diverging orange scale (bright → dark) ────────────────────────────────────
+const ORANGE_SCALE = ["#FFA040", "#FF8000", "#E05C00", "#CC4400", "#993300", "#7A2500", "#5C1800", "#3D1000"];
+
+function orangeByRank(index: number, total: number): string {
+  const i = Math.min(
+    Math.round((index / Math.max(total - 1, 1)) * (ORANGE_SCALE.length - 1)),
+    ORANGE_SCALE.length - 1
+  );
+  return ORANGE_SCALE[i];
+}
+
 // ── Formatters ────────────────────────────────────────────────────────────────
 function fmt(n: number | null | undefined) {
   if (n == null) return "—";
@@ -15,14 +26,14 @@ function fmt(n: number | null | undefined) {
 }
 
 function ImpactTag({ level }: { level: string | null }) {
-  if (!level) return <span className="text-[#888] text-[9px]">—</span>;
+  if (!level) return <span className="text-[#9a9a9a] text-[9px]">—</span>;
   const map: Record<string, string> = {
     high:   "text-[#FF4040] border-[#FF4040]/60",
-    medium: "text-[#FFB300] border-[#FFB300]/60",
+    medium: "text-[#E05C00] border-[#E05C00]/60",
     low:    "text-[#00CC44] border-[#00CC44]/60",
   };
   return (
-    <span className={`text-[9px] font-bold tracking-wider border px-1.5 py-0.5 ${map[level] ?? "text-[#AAA] border-[#AAA]/40"}`}>
+    <span className={`text-[9px] font-bold tracking-wider border px-1.5 py-0.5 ${map[level] ?? "text-[#9a9a9a] border-[#9a9a9a]/40"}`}>
       {level.toUpperCase()}
     </span>
   );
@@ -30,13 +41,16 @@ function ImpactTag({ level }: { level: string | null }) {
 
 function PanelHeader({ label, sub, href }: { label: string; sub?: string; href?: string }) {
   return (
-    <div className="flex items-center justify-between bg-[#F5821F] px-3 py-1.5">
+    <div
+      className="flex items-center justify-between px-3 py-1.5"
+      style={{ background: "linear-gradient(to right, #FF8000, #7A2500)" }}
+    >
       <div className="flex items-center gap-2">
-        <span className="text-black text-[10px] font-bold tracking-[0.18em] uppercase">{label}</span>
-        {sub && <span className="text-black/50 text-[9px] tracking-wider">/ {sub}</span>}
+        <span className="text-white text-[10px] font-bold tracking-[0.18em] uppercase drop-shadow">{label}</span>
+        {sub && <span className="text-white/50 text-[9px] tracking-wider">/ {sub}</span>}
       </div>
       {href && (
-        <Link href={href} className="flex items-center gap-0.5 text-black/70 text-[9px] hover:text-black tracking-wider transition-colors font-bold">
+        <Link href={href} className="flex items-center gap-0.5 text-white/70 text-[9px] hover:text-white tracking-wider transition-colors font-bold">
           ALL <ChevronRight size={9} />
         </Link>
       )}
@@ -57,8 +71,8 @@ function LiveValueCell({ live, base }: { live: LiveValue | undefined; base: numb
   return (
     <div className="text-right">
       <span
-        key={live?.flashKey}        // re-mounts span to restart CSS animation
-        className={`text-[#E0E0E0] text-[11px] tabular-nums ${flashClass}`}
+        key={live?.flashKey}
+        className={`text-[#f7f7f2] text-[11px] tabular-nums ${flashClass}`}
       >
         {fmt(display)}
       </span>
@@ -84,14 +98,14 @@ function EventAlerts({ alerts, onDismiss }: {
       {alerts.map(a => (
         <div
           key={a.id}
-          className="alert-in flex items-center justify-between border border-[#FFB300]/40 bg-[#FFB300]/8 px-3 py-2"
+          className="alert-in flex items-center justify-between border border-[#E05C00]/40 bg-[#E05C00]/8 px-3 py-2"
         >
           <div className="flex items-center gap-2">
-            <span className="text-[#FFB300] text-[9px] font-bold tracking-wider">NEW EVENT</span>
-            <span className="text-[#E0E0E0] text-[10px] truncate max-w-xs">{a.title?.toUpperCase()}</span>
+            <span className="text-[#FFA040] text-[9px] font-bold tracking-wider">NEW EVENT</span>
+            <span className="text-[#f7f7f2] text-[10px] truncate max-w-xs">{a.title?.toUpperCase()}</span>
             {a.impact && <ImpactTag level={a.impact} />}
           </div>
-          <button onClick={() => onDismiss(a.id)} className="text-[#555] hover:text-[#AAA] ml-3">
+          <button onClick={() => onDismiss(a.id)} className="text-[#555] hover:text-[#9a9a9a] ml-3">
             <X size={10} />
           </button>
         </div>
@@ -107,12 +121,29 @@ export default function Dashboard() {
   const [loading, setLoading]       = useState(true);
   const [now, setNow]               = useState(new Date());
 
-  // live data state
   const [liveValues, setLiveValues]   = useState<Record<number, LiveValue>>({});
   const [eventAlerts, setEventAlerts] = useState<EventAlert[]>([]);
   const alertIdRef = useRef(0);
 
-  // WebSocket
+  // Apply gradient background + sidebar glass effect only on the dashboard page
+  useEffect(() => {
+    document.body.style.background = "transparent";
+    const aside = document.querySelector("aside") as HTMLElement | null;
+    if (aside) {
+      aside.style.background = "rgba(6, 2, 0, 0.80)";
+      aside.style.backdropFilter = "blur(18px)";
+      aside.style.borderRight = "1px solid rgba(255,120,0,0.22)";
+    }
+    return () => {
+      document.body.style.background = "";
+      if (aside) {
+        aside.style.background = "";
+        aside.style.backdropFilter = "";
+        aside.style.borderRight = "";
+      }
+    };
+  }, []);
+
   const { connected } = useWebSocket((msg: WsMessage) => {
     if (msg.type === "portfolio_update" && msg.portfolio_id != null) {
       setLiveValues(prev => ({
@@ -130,7 +161,6 @@ export default function Dashboard() {
       const impact = (d.impact_level ?? null) as string | null;
       const id = ++alertIdRef.current;
       setEventAlerts(prev => [...prev.slice(-4), { id, title, impact }]);
-      // auto-dismiss after 8 s
       setTimeout(() => setEventAlerts(prev => prev.filter(a => a.id !== id)), 8_000);
     }
   });
@@ -144,13 +174,19 @@ export default function Dashboard() {
     return () => clearInterval(tick);
   }, []);
 
-  // Recalculate total AUM using live values where available
   const totalAUM = portfolios.reduce((sum, p) => {
     const live = liveValues[p.portfolio_id];
     return sum + (live ? live.value : Number(p.total_value) || 0);
   }, 0);
 
-  const strategies = [...new Set(portfolios.map(p => p.strategy_type).filter(Boolean))];
+  // sort strategies by count desc so rank 0 = most popular = brightest orange
+  const strategyCounts = portfolios.reduce<Record<string, number>>((acc, p) => {
+    if (p.strategy_type) acc[p.strategy_type] = (acc[p.strategy_type] ?? 0) + 1;
+    return acc;
+  }, {});
+  const strategies = Object.entries(strategyCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([s]) => s);
 
   if (loading) return <LoadingSpinner label="Initialising terminal..." />;
 
@@ -160,25 +196,40 @@ export default function Dashboard() {
   const timeStr = now.toLocaleTimeString("en-US", { hour12: false });
 
   return (
-    <div className="max-w-7xl mx-auto space-y-3 font-mono">
+    <>
+      {/* ── Layer 1: Full-viewport diverging gradient (fixed, behind everything) ── */}
+      <div
+        className="fixed inset-0"
+        style={{
+          zIndex: 1,
+          background:
+            "radial-gradient(ellipse at top left, #FFA040 0%, #FF8000 22%, #CC4400 45%, #7A2500 65%, #3D1000 82%, #050000 100%)",
+        }}
+      />
+
+      {/* ── Layer 2: Black canvas — sits within main's p-5 gap (that gap = visible orange frame) ── */}
+      <div
+        className="relative bg-black"
+        style={{ zIndex: 2, minHeight: "calc(100vh - 40px)" }}
+      >
+        <div className="max-w-7xl mx-auto space-y-3 font-mono p-5">
 
       {/* ── Top terminal bar ─────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between border border-[#2A2A2A] bg-[#0D0D0D] px-4 py-2">
+      <div className="flex items-center justify-between border border-[#2e2e2e] bg-[#0d0d0d] px-4 py-2">
         <div className="flex items-center gap-3">
-          <span className="text-[#F5821F] text-[11px] font-bold tracking-[0.2em]">FINSIGHT AI</span>
+          <span className="text-[11px] font-bold tracking-[0.2em]" style={{ color: "#FF8000" }}>FINSIGHT AI</span>
           <span className="text-[#3A3A3A]">│</span>
-          <span className="text-[#888] text-[9px] tracking-[0.12em]">PORTFOLIO INTELLIGENCE TERMINAL</span>
+          <span className="text-[#9a9a9a] text-[9px] tracking-[0.12em]">PORTFOLIO INTELLIGENCE TERMINAL</span>
           <span className="text-[#3A3A3A]">│</span>
-          <span className="text-[#777] text-[9px] tracking-wider">v2.0</span>
+          <span className="text-[#9a9a9a] text-[9px] tracking-wider">v2.0</span>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-[#AAA] text-[10px] tabular-nums tracking-wider">{dateStr}</span>
-          <span className="text-[#E0E0E0] text-[10px] tabular-nums font-bold tracking-wider">{timeStr}</span>
+          <span className="text-[#9a9a9a] text-[10px] tabular-nums tracking-wider">{dateStr}</span>
+          <span className="text-[#f7f7f2] text-[10px] tabular-nums font-bold tracking-wider">{timeStr}</span>
           <span className="text-[#3A3A3A]">│</span>
-          {/* WebSocket connection status */}
           <div className="flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-[#00CC44] animate-pulse" : "bg-[#FFB300]"}`} />
-            <span className={`text-[9px] font-bold tracking-[0.15em] ${connected ? "text-[#00CC44]" : "text-[#FFB300]"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-[#00CC44] animate-pulse" : "bg-[#E05C00]"}`} />
+            <span className={`text-[9px] font-bold tracking-[0.15em] ${connected ? "text-[#00CC44]" : "text-[#E05C00]"}`}>
               {connected ? "LIVE" : "RECONNECTING"}
             </span>
           </div>
@@ -192,17 +243,17 @@ export default function Dashboard() {
       />
 
       {/* ── KPI strip ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-4 border border-[#2A2A2A]">
+      <div className="grid grid-cols-4 border border-[#2e2e2e]">
         {[
-          { label: "TOTAL AUM",      value: fmt(totalAUM),       sub: `${portfolios.length} PORTFOLIOS`,  valueColor: "text-[#F5821F]" },
-          { label: "STRATEGIES",     value: strategies.length,   sub: strategies.slice(0,2).join(" · ").toUpperCase() || "—", valueColor: "text-[#E0E0E0]" },
-          { label: "MARKET EVENTS",  value: events.length,       sub: "LAST 10 ALERTS",                   valueColor: "text-[#FFB300]" },
-          { label: "SYSTEM STATUS",  value: connected ? "ONLINE" : "PARTIAL", sub: "API · RAG · GPT-4o", valueColor: connected ? "text-[#00CC44]" : "text-[#FFB300]" },
+          { label: "TOTAL AUM",     value: fmt(totalAUM),                          sub: `${portfolios.length} PORTFOLIOS`,                          valueColor: "#00CC44" },
+          { label: "STRATEGIES",    value: strategies.length,                       sub: strategies.slice(0, 2).join(" · ").toUpperCase() || "—",   valueColor: "#00CC44" },
+          { label: "MARKET EVENTS", value: events.length,                           sub: "LAST 10 ALERTS",                                           valueColor: "#00CC44" },
+          { label: "SYSTEM STATUS", value: connected ? "ONLINE" : "PARTIAL",       sub: "API · RAG · GPT-4o",                                       valueColor: connected ? "#00CC44" : "#E05C00" },
         ].map((kpi, i) => (
-          <div key={i} className={`p-4 bg-[#0D0D0D] ${i < 3 ? "border-r border-[#2A2A2A]" : ""}`}>
-            <p className="text-[#F5821F] text-[9px] font-bold tracking-[0.15em] mb-2">{kpi.label}</p>
-            <p className={`text-2xl font-bold tabular-nums ${kpi.valueColor}`}>{kpi.value}</p>
-            <p className="text-[#888] text-[10px] mt-1 tracking-wider">{kpi.sub}</p>
+          <div key={i} className={`p-4 bg-[#0d0d0d] ${i < 3 ? "border-r border-[#2e2e2e]" : ""}`}>
+            <p className="text-[9px] font-bold tracking-[0.15em] mb-2" style={{ color: "#FF8000" }}>{kpi.label}</p>
+            <p className="text-2xl font-bold tabular-nums" style={{ color: kpi.valueColor }}>{kpi.value}</p>
+            <p className="text-[#9a9a9a] text-[10px] mt-1 tracking-wider">{kpi.sub}</p>
           </div>
         ))}
       </div>
@@ -211,12 +262,12 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 gap-3">
 
         {/* Portfolios */}
-        <div className="border border-[#2A2A2A]">
+        <div className="border border-[#2e2e2e]">
           <PanelHeader label="PORTFOLIOS" sub={`${portfolios.length} ACTIVE`} href="/portfolios" />
-          <div className="grid px-3 py-1.5 bg-[#0D0D0D] border-b border-[#2A2A2A]"
+          <div className="grid px-3 py-1.5 bg-[#0d0d0d] border-b border-[#2e2e2e]"
                style={{ gridTemplateColumns: "36px 1fr 110px 50px" }}>
             {["ID", "NAME / STRATEGY", "VALUE", "Δ%"].map(h => (
-              <span key={h} className="text-[#F5821F] text-[9px] font-bold tracking-[0.12em] last:text-right">{h}</span>
+              <span key={h} className="text-[9px] font-bold tracking-[0.12em] last:text-right" style={{ color: "#FF8000" }}>{h}</span>
             ))}
           </div>
 
@@ -226,36 +277,34 @@ export default function Dashboard() {
               <Link
                 key={p.portfolio_id}
                 href={`/portfolios/${p.portfolio_id}`}
-                className="grid px-3 py-2 border-b border-[#1A1A1A] hover:bg-[#1A1A1A] transition-colors group"
+                className="grid px-3 py-2 border-b border-[#161616] hover:bg-[#1a0a00] transition-colors group"
                 style={{ gridTemplateColumns: "36px 1fr 110px 50px" }}
               >
-                <span className="text-[#888] text-[9px] tabular-nums self-center">
+                <span className="text-[#9a9a9a] text-[9px] tabular-nums self-center">
                   {String(p.portfolio_id).padStart(3, "0")}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[#E0E0E0] text-[11px] group-hover:text-[#F5821F] transition-colors truncate leading-tight">
+                  <p className="text-[#f7f7f2] text-[11px] transition-colors truncate leading-tight group-hover:text-[#FFA040]">
                     {p.portfolio_name?.toUpperCase()}
                   </p>
-                  <p className="text-[#AAA] text-[9px] tracking-wider truncate">
+                  <p className="text-[#9a9a9a] text-[9px] tracking-wider truncate">
                     {p.strategy_type?.toUpperCase() ?? "—"}
                   </p>
                 </div>
-                {/* Live value with flash */}
                 <span
                   key={live?.flashKey}
                   className={`text-[11px] tabular-nums self-center ${
                     live
                       ? live.changePct >= 0 ? "flash-up text-[#00CC44]" : "flash-down text-[#FF4040]"
-                      : "text-[#E0E0E0]"
+                      : "text-[#f7f7f2]"
                   }`}
                 >
                   {fmt(live?.value ?? Number(p.total_value))}
                 </span>
-                {/* Change % */}
                 <span className={`text-[9px] tabular-nums self-center text-right ${
                   live
                     ? live.changePct >= 0 ? "text-[#00CC44]" : "text-[#FF4040]"
-                    : "text-[#555]"
+                    : "text-[#9a9a9a]"
                 }`}>
                   {live
                     ? `${live.changePct >= 0 ? "▲" : "▼"} ${Math.abs(live.changePct).toFixed(2)}%`
@@ -265,20 +314,23 @@ export default function Dashboard() {
             );
           })}
 
-          <div className="px-3 py-2 bg-[#0D0D0D] border-t border-[#2A2A2A] flex justify-end">
-            <Link href="/portfolios" className="text-[#F5821F] hover:text-[#FFB300] text-[9px] tracking-wider flex items-center gap-1 transition-colors opacity-70 hover:opacity-100">
+          <div className="px-3 py-2 bg-[#0d0d0d] border-t border-[#2e2e2e] flex justify-end">
+            <Link href="/portfolios" className="text-[9px] tracking-wider flex items-center gap-1 transition-colors opacity-70 hover:opacity-100"
+                  style={{ color: "#CC4400" }}
+                  onMouseEnter={e => (e.currentTarget.style.color = "#FFA040")}
+                  onMouseLeave={e => (e.currentTarget.style.color = "#CC4400")}>
               VIEW ALL {portfolios.length} PORTFOLIOS <ArrowRight size={9} />
             </Link>
           </div>
         </div>
 
         {/* Market Events */}
-        <div className="border border-[#2A2A2A]">
+        <div className="border border-[#2e2e2e]">
           <PanelHeader label="MARKET EVENTS" sub="RECENT ALERTS" href="/market-events" />
-          <div className="grid px-3 py-1.5 bg-[#0D0D0D] border-b border-[#2A2A2A]"
+          <div className="grid px-3 py-1.5 bg-[#0d0d0d] border-b border-[#2e2e2e]"
                style={{ gridTemplateColumns: "76px 1fr 60px" }}>
             {["DATE", "EVENT / TYPE", "IMPACT"].map(h => (
-              <span key={h} className="text-[#F5821F] text-[9px] font-bold tracking-[0.12em]">{h}</span>
+              <span key={h} className="text-[9px] font-bold tracking-[0.12em]" style={{ color: "#FF8000" }}>{h}</span>
             ))}
           </div>
 
@@ -286,17 +338,17 @@ export default function Dashboard() {
             <Link
               key={ev.event_id}
               href={`/market-events/${ev.event_id}`}
-              className="grid px-3 py-2 border-b border-[#1A1A1A] hover:bg-[#1A1A1A] transition-colors group items-start"
+              className="grid px-3 py-2 border-b border-[#161616] hover:bg-[#1a0a00] transition-colors group items-start"
               style={{ gridTemplateColumns: "76px 1fr 60px" }}
             >
-              <span className="text-[#AAA] text-[9px] tabular-nums pt-0.5">
+              <span className="text-[#9a9a9a] text-[9px] tabular-nums pt-0.5">
                 {ev.event_date?.slice(0, 10) ?? "—"}
               </span>
               <div className="min-w-0">
-                <p className="text-[#E0E0E0] text-[11px] group-hover:text-[#F5821F] transition-colors truncate leading-tight">
+                <p className="text-[#f7f7f2] text-[11px] transition-colors truncate leading-tight group-hover:text-[#FFA040]">
                   {ev.event_title?.toUpperCase() ?? "UNTITLED"}
                 </p>
-                <p className="text-[#AAA] text-[9px] tracking-wider truncate">
+                <p className="text-[#9a9a9a] text-[9px] tracking-wider truncate">
                   {ev.event_type?.toUpperCase() ?? "—"}
                 </p>
               </div>
@@ -306,8 +358,11 @@ export default function Dashboard() {
             </Link>
           ))}
 
-          <div className="px-3 py-2 bg-[#0D0D0D] border-t border-[#2A2A2A] flex justify-end">
-            <Link href="/market-events" className="text-[#F5821F] hover:text-[#FFB300] text-[9px] tracking-wider flex items-center gap-1 transition-colors opacity-70 hover:opacity-100">
+          <div className="px-3 py-2 bg-[#0d0d0d] border-t border-[#2e2e2e] flex justify-end">
+            <Link href="/market-events" className="text-[9px] tracking-wider flex items-center gap-1 transition-colors opacity-70 hover:opacity-100"
+                  style={{ color: "#CC4400" }}
+                  onMouseEnter={e => (e.currentTarget.style.color = "#FFA040")}
+                  onMouseLeave={e => (e.currentTarget.style.color = "#CC4400")}>
               VIEW ALL EVENTS <ArrowRight size={9} />
             </Link>
           </div>
@@ -315,20 +370,21 @@ export default function Dashboard() {
       </div>
 
       {/* ── Strategy distribution ─────────────────────────────────────────── */}
-      <div className="border border-[#2A2A2A]">
+      <div className="border border-[#2e2e2e]">
         <PanelHeader label="STRATEGY DISTRIBUTION" sub={`${strategies.length} ACTIVE`} />
-        <div className="flex divide-x divide-[#2A2A2A] bg-[#0D0D0D]">
-          {strategies.slice(0, 8).map(s => {
-            const count = portfolios.filter(p => p.strategy_type === s).length;
+        <div className="flex divide-x divide-[#2e2e2e] bg-[#0d0d0d]">
+          {strategies.slice(0, 8).map((s, idx) => {
+            const count = strategyCounts[s] ?? 0;
             const pct   = portfolios.length ? ((count / portfolios.length) * 100).toFixed(1) : "0.0";
+            const barColor = orangeByRank(idx, Math.min(strategies.length, 8));
             return (
               <div key={s} className="flex-1 px-3 py-2.5 min-w-0">
-                <p className="text-[#F5821F] text-[8px] font-bold tracking-wider truncate uppercase">{s}</p>
-                <p className="text-[#E0E0E0] text-base font-bold tabular-nums mt-0.5">{count}</p>
-                <div className="mt-1.5 h-px bg-[#2A2A2A]">
-                  <div className="h-full bg-[#F5821F]/70" style={{ width: `${pct}%` }} />
+                <p className="text-[8px] font-bold tracking-wider truncate uppercase" style={{ color: "#FFA040" }}>{s}</p>
+                <p className="text-base font-bold tabular-nums mt-0.5" style={{ color: "#00CC44" }}>{count}</p>
+                <div className="mt-1.5 h-1 bg-[#1a0a00] rounded-none">
+                  <div className="h-full" style={{ width: `${pct}%`, backgroundColor: "#FFA040", opacity: 0.85 }} />
                 </div>
-                <p className="text-[#AAA] text-[8px] mt-1 tabular-nums">{pct}%</p>
+                <p className="text-[#9a9a9a] text-[8px] mt-1 tabular-nums">{pct}%</p>
               </div>
             );
           })}
@@ -336,26 +392,28 @@ export default function Dashboard() {
       </div>
 
       {/* ── System status strip ──────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 border border-[#2A2A2A] border-t-0 px-3 py-1.5 bg-[#0D0D0D] text-[9px] tracking-wider">
-        <span className="text-[#F5821F] font-bold opacity-80">SYS</span>
+      <div className="flex items-center gap-3 border border-[#2e2e2e] border-t-0 px-3 py-1.5 bg-[#0d0d0d] text-[9px] tracking-wider">
+        <span className="font-bold opacity-90" style={{ color: "#FF8000" }}>SYS</span>
         <span className="text-[#3A3A3A]">│</span>
-        <span className="text-[#888]">API localhost:8000</span>
+        <span className="text-[#9a9a9a]">API localhost:8000</span>
         <span className="text-[#3A3A3A]">│</span>
-        <span className="text-[#888]">WS {connected ? `CONNECTED` : "RECONNECTING"}</span>
+        <span className="text-[#9a9a9a]">WS {connected ? "CONNECTED" : "RECONNECTING"}</span>
         <span className="text-[#3A3A3A]">│</span>
-        <span className="text-[#888]">DB SQL-SERVER</span>
+        <span className="text-[#9a9a9a]">DB SQL-SERVER</span>
         <span className="text-[#3A3A3A]">│</span>
-        <span className="text-[#888]">RAG CHROMADB</span>
+        <span className="text-[#9a9a9a]">RAG CHROMADB</span>
         <span className="text-[#3A3A3A]">│</span>
-        <span className="text-[#888]">AI GPT-4o</span>
+        <span className="text-[#9a9a9a]">AI GPT-4o</span>
         <div className="ml-auto flex items-center gap-1.5">
-          <span className={`w-1 h-1 rounded-full ${connected ? "bg-[#00CC44] animate-pulse" : "bg-[#FFB300]"}`} />
-          <span className={`text-[9px] font-bold tracking-wider ${connected ? "text-[#00CC44]" : "text-[#FFB300]"}`}>
+          <span className={`w-1 h-1 rounded-full ${connected ? "bg-[#00CC44] animate-pulse" : "bg-[#E05C00]"}`} />
+          <span className={`text-[9px] font-bold tracking-wider ${connected ? "text-[#00CC44]" : "text-[#E05C00]"}`}>
             {connected ? "ALL SYSTEMS OPERATIONAL" : "PARTIAL — WS RECONNECTING"}
           </span>
         </div>
       </div>
 
-    </div>
+        </div>{/* end max-w-7xl */}
+      </div>{/* end Layer 2: black canvas */}
+    </>
   );
 }

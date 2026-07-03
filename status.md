@@ -1,5 +1,5 @@
 ## Project Status — FinSight AI
-**Last Updated**: 2026-06-21 (Task 4.2 completed)
+**Last Updated**: 2026-07-03 (Phase 5 tasks 5.1, 5.2, 5.3 complete)
 
 ---
 
@@ -66,7 +66,33 @@
   - RAG query engine: `backend/rag/query_engine.py` (searches all 10 collections, returns ranked results)
   - Additional APIs: FRED (macroeconomic data), AlphaVantage, Finnhub
 
-- ⏸️ Task 3.4: MCP Integration — DEFERRED (not started)
+- ✅ Task 3.4a: Agentic AI Chat (OpenAI Function Calling) — COMPLETED (2026-06-25)
+  - Upgraded `/chat` from static context injection to GPT-4o autonomous tool calling
+  - **Before**: every question pre-loaded a fixed portfolio snapshot + 5 RAG docs → GPT-4o answered from that static block
+  - **After**: GPT-4o decides which tools it needs, calls them, gets live data, then answers
+  - **5 tools exposed to GPT-4o:**
+    - `get_portfolio_data` → PortfolioAnalyzer (sector allocation, risk metrics, performance)
+    - `get_position_history` → PositionChangeDetector (significant changes in a date range)
+    - `search_market_context` → MarketRAGEngine (semantic search across all ChromaDB collections)
+    - `get_market_events` → SQL MarketEvents table (Fed decisions, geopolitical events, etc.)
+    - `run_risk_analysis` → RecommendationEngine (concentration risk, rebalancing suggestions)
+  - **Files changed (5):**
+    - `backend/services/ai_tools.py` — NEW: tool schemas + execute_tool() dispatcher
+    - `backend/services/ai_chat_service.py` — REWRITTEN: non-streaming tool loop + streaming final answer
+    - `backend/routers/analysis.py` — 2-line change: now passes event dicts directly to SSE
+    - `frontend/lib/api.ts` — added `onToolCall?` callback + `parsed.tool_call` handler
+    - `frontend/app/chat/page.tsx` — ToolChips component, streamingToolCalls state, status indicator
+  - **UX**: during tool execution, status bar shows `● CALLING: GET_PORTFOLIO_DATA`; completed tools appear as orange chips inside the assistant bubble
+  - RAG pipeline unchanged — `search_market_context` tool calls same MarketRAGEngine
+  - **Validated (2026-06-26)**: all 5 tools confirmed firing; multi-tool chaining tested (3 tools in one response); ChromaDB graceful degradation confirmed
+
+- ✅ Task 3.4a Bug Fix: Markdown rendering in chat (2026-06-26)
+  - **Problem**: GPT-4o responses containing `**bold**` and `### headers` rendered as raw text
+  - **Fix**: replaced plain `{msg.content}` text node in `Bubble` component with `<ReactMarkdown>` + `remark-gfm`
+  - **Styling**: headings → orange (`#F5821F`), bold → white, code → dark bg with orange text; matches terminal aesthetic
+  - **Files changed**: `frontend/app/chat/page.tsx` (import + Bubble component), `frontend/package.json` (+`react-markdown`, `remark-gfm`)
+
+- ⏸️ Task 3.4b: FastMCP Server — PENDING (expose FinSight as standards-compliant MCP server for Claude Desktop / Cursor)
 
 ---
 
@@ -129,21 +155,37 @@
       charts and positions table restyled to Bloomberg theme
   - **CSS:** `flash-up`, `flash-down`, `alert-in` keyframe animations added to `globals.css`
 
-- ✅ Task 4.3: AI Chat Interface — COMPLETED (2026-06-21)
-  - New page `/chat` — conversational Q&A grounded in live portfolio data + RAG
-  - Backend: `ai_chat_service.py` streams GPT-4o tokens via SSE
-  - Endpoints: POST /api/analysis/ai/chat (streaming SSE) · GET /api/analysis/ai/chat/suggested-questions
-  - LLMService extended with `generate_stream()` for real-time token streaming
-  - Frontend: streaming chat bubbles (tokens appear as they arrive), orange blinking cursor
-  - Features: portfolio selector, 6 suggested questions, multi-turn history (last 8 turns as context),
-    Enter to send, Shift+Enter for newline, CLEAR button, error handling
+- ✅ Task 4.3: AI Chat Interface — COMPLETED (2026-06-21), upgraded to agentic (2026-06-25)
+  - New page `/chat` — conversational Q&A with agentic GPT-4o tool calling
+  - Backend: `ai_chat_service.py` — non-streaming tool loop + streaming final answer
+  - Endpoints: POST /api/analysis/ai/chat (SSE: emits tool_call events + token chunks) · GET /api/analysis/ai/chat/suggested-questions
+  - Frontend: streaming chat bubbles, orange tool-call chips show which tools were invoked, status bar shows active tool name during execution
+  - Features: portfolio selector, 6 suggested questions, multi-turn history, Enter to send, CLEAR button
 
 ---
 
-### Phase 5: Advanced Features — PENDING
-- ⏳ Task 5.1: Advanced Analytics (VaR, stress testing, factor exposure)
-- ⏳ Task 5.2: Alert System (threshold alerts, event alerts, AI-generated alerts)
-- ⏳ Task 5.3: Report Generation (PDF/Excel, AI-generated commentary)
+### Phase 5: Advanced Features — IN PROGRESS
+
+- ✅ Task 5.1: Advanced Risk Analytics — COMPLETED
+  - `backend/services/risk_analytics.py` — Historical VaR (95%/99%, 1-day/10-day), parametric VaR, 6 stress tests (2008 Crisis, COVID, Rate Shock, Dot-com Bust, Oil Shock, Stagflation), factor exposure (OLS regression vs SPY/IWD/IWF/MTUM/USMV)
+  - `backend/scripts/risk_job.py` — loops all portfolios, saves to `Risk_Metrics` table; runs daily 17:30 ET via AWS EventBridge → SSM → Flink EC2
+  - `backend/routers/risk.py` — `GET /api/risk/{id}` (latest), `POST /api/risk/{id}/refresh` (on-demand, ~10-30s), `GET /api/risk/{id}/history?days=30` (trend data)
+  - Frontend Risk Analytics tab: VaR grid, 6 stress test cards, factor exposure bar chart + table, VaR trend chart
+
+- ✅ Task 5.2: Alert System — COMPLETED (threshold alerts only; event + AI alerts pending)
+  - `backend/services/alert_engine.py` — fires on VaR 95% > 2% (warning), VaR 99% > 3.5% (critical), stress < -25% (warning), stress < -40% (critical), market beta > 1.5 (warning); deduplication: one alert per title per portfolio per day
+  - `backend/routers/alerts.py` — `GET /api/alerts`, `GET /api/alerts/unread-count`, `PATCH /api/alerts/{id}/read`, `PATCH /api/alerts/read-all`
+  - Frontend: Sidebar bell with red unread badge (polls 60s), slide-out panel; inline alert panel on Risk tab
+  - **Pending (5.2 sub-items)**: Event alerts (Market_Events → sector exposure scan) and AI-generated alerts (GPT-4o proactive analysis) — column exists in model, no engine yet
+
+- ✅ Task 5.3: Risk Trend Visualization — COMPLETED (2026-07-03)
+  - `GET /api/risk/{id}/history?days=30` — returns chronological array of `{computed_at, price_date, var_95_1d_pct, var_99_1d_pct, stress_worst_pct}` from `Risk_Metrics` table
+  - `frontend/lib/api.ts` — `RiskHistoryPoint` type + `getRiskHistory()` function
+  - Frontend: VAR TREND · 30-DAY HISTORY LineChart at bottom of Risk tab — two lines (95%/99% VaR as absolute loss %), dashed reference lines at 2% (warning) and 3.5% (critical) thresholds, legend; shows "No trend data yet" placeholder if < 2 data points
+  - Verified in browser: chart renders, WARN reference line visible, both VaR lines plotted correctly
+
+- ⏳ Task 5.2b: ChromaDB Data Retention — OPTIONAL (only needed when market_news > ~50K docs)
+- ⏳ Task 5.4 (was 5.3 in original plan): Report Generation (PDF/Excel, AI commentary) — PENDING
 
 ---
 
@@ -182,9 +224,29 @@
 |---|---|---|
 | 1 — Data Modeling | ✅ Complete | Manual SQL scripts, no Alembic |
 | 2 — Backend API | ✅ Complete | 18+ endpoints, full analytics |
-| 3 — AI/LLM | ✅ Complete | GPT-4o, RAG, 4 AI endpoints, streaming |
+| 3 — AI/LLM | ✅ Complete | GPT-4o, RAG, 4 AI endpoints, agentic chat (3.4a done, 3.4b pending) |
 | 4 — Frontend | ✅ Complete | All 3 tasks done (4.1, 4.2, 4.3) |
-| 5 — Advanced | ⏳ Pending | |
+| 5 — Advanced | 🔄 In Progress | 5.1 ✅ 5.2 ✅ (threshold) 5.3 ✅ · pending: 5.2 event/AI alerts, report gen |
 | 6 — Infrastructure | ⏳ Pending | Redis (6.2) for caching + multi-worker WS scaling |
 
-**Current Focus**: Phases 1–4 fully complete. Ready to start Phase 5 (Advanced Analytics / Alert System / Reports).
+**Current Focus**: Phase 5 in progress. Tasks 5.1 (VaR/stress/factor), 5.2 (threshold alerts), 5.3 (VaR trend chart) complete. Pending: 5.2 event alerts + AI-generated alerts, Task 3.4b (FastMCP Server), Phase 6.
+
+**Known Runtime Issues**:
+- ChromaDB container not running → `search_market_context` tool returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)
+
+---
+
+### AWS Infrastructure Fixes (2026-06-29)
+
+Three production bugs found and fixed after EC2 instances failed to auto-start:
+
+**1. Lambda IAM trust policy broken** — When the EventBridge risk job was set up (2026-06-27), the `finsight-ec2-scheduler-role` trust policy was overwritten to `scheduler.amazonaws.com` only, removing `lambda.amazonaws.com`. Lambda could not assume its own execution role → EC2s never started.
+- Fix: trust policy now includes both `lambda.amazonaws.com` and `scheduler.amazonaws.com`
+- Fix: added `ec2:StartInstances`, `ec2:StopInstances`, `ec2:DescribeInstances`, and CloudWatch Logs permissions to the role
+
+**2. Kafka advertised listener used public Elastic IP** — `KAFKA_EXTERNAL_IP=13.233.21.229` caused Kafka to advertise its public IP to producers. Producers running on the same EC2 cannot reach the instance's own Elastic IP via hairpin NAT reliably (AWS VPC does not guarantee this). Messages silently buffered in the producer but never delivered; Kafka offset stayed frozen despite logs showing "N trades published".
+- Fix: `KAFKA_EXTERNAL_IP=172.31.34.55` (private IP) in `/home/ec2-user/FinSight-AI/aws/ec2-flink/.env`
+- Flink containers unaffected — they use the internal Docker listener `kafka:29092`
+
+**3. `start_pipeline.sh` used bare `python`** — Script activates the venv but `nohup` launches a subprocess where the venv PATH is not inherited. `python` command not found → both producers silently exited with code 127.
+- Fix: changed to `$VENV/bin/python` (explicit venv path) for both producer launch lines

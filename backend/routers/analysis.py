@@ -212,12 +212,12 @@ def ai_chat_stream(
                 {"role": m.role, "content": m.content}
                 for m in (request.conversation_history or [])
             ]
-            for token in service.stream_response(
+            for event in service.stream_response(
                 portfolio_id=request.portfolio_id,
                 user_message=request.message,
                 conversation_history=history,
             ):
-                payload = json.dumps({"token": token}, ensure_ascii=False)
+                payload = json.dumps(event, ensure_ascii=False)
                 yield f"data: {payload}\n\n"
         except ValueError as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"

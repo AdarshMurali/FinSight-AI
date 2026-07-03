@@ -71,7 +71,7 @@ class WindowAggregator(ReduceFunction):
             "total_volume": a["total_volume"] + b["total_volume"],
             "trade_count":  a.get("trade_count", 1) + b.get("trade_count", 1),
             "window_start": a.get("window_start", a.get("timestamp_iso", "")),
-            "window_end":   b.get("timestamp_iso", ""),
+            "window_end":   b.get("window_end", ""),
         }
 
 

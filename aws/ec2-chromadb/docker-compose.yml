@@ -1,0 +1,18 @@
+# ChromaDB — AWS EC2 t2.micro (Free Tier)
+# Runs ChromaDB only. Data persists on EBS volume mounted at /data/chroma.
+# Start: docker compose -f docker-compose.yml up -d
+# Stop:  docker compose -f docker-compose.yml down  (data survives on EBS)
+
+services:
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: FinSight_AI_chromadb
+    ports:
+      - "8001:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/data
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - /data/chroma:/data
+    restart: unless-stopped

@@ -132,3 +132,33 @@ class PositionChangeLog(Base):
     new_weight = Column(DECIMAL(5, 2))
     reason = Column(Text)
     related_event_id = Column(Integer, ForeignKey("Market_Events.event_id"), nullable=True)
+
+
+class RiskMetric(Base):
+    __tablename__ = "Risk_Metrics"
+
+    metric_id    = Column(Integer, primary_key=True, index=True)
+    portfolio_id = Column(Integer, ForeignKey("Portfolios.portfolio_id"), nullable=False)
+    computed_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    var_data     = Column(Text)   # JSON
+    stress_data  = Column(Text)   # JSON
+    factor_data  = Column(Text)   # JSON
+    price_date   = Column(Date)
+    status       = Column(String(50), default="completed")
+
+    portfolio = relationship("Portfolio")
+
+
+class Alert(Base):
+    __tablename__ = "Alerts"
+
+    alert_id     = Column(Integer, primary_key=True, index=True)
+    portfolio_id = Column(Integer, ForeignKey("Portfolios.portfolio_id"), nullable=True)
+    alert_type   = Column(String(50), nullable=False)   # threshold | event | ai
+    severity     = Column(String(20), nullable=False)   # critical | warning | info
+    title        = Column(String(255), nullable=False)
+    message      = Column(Text, nullable=False)
+    is_read      = Column(Integer, default=0)           # 0=unread, 1=read
+    triggered_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    portfolio = relationship("Portfolio")

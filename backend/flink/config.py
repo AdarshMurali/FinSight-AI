@@ -6,7 +6,7 @@ load_dotenv()
 # ── Kafka ─────────────────────────────────────────────────────────────────
 # When running natively on Windows, producers connect via localhost:9092.
 # When running inside Docker (Flink jobs), connect via kafka:29092.
-KAFKA_BOOTSTRAP_SERVERS_EXTERNAL = "localhost:9092"   # used by Windows producers
+KAFKA_BOOTSTRAP_SERVERS_EXTERNAL = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 KAFKA_BOOTSTRAP_SERVERS_INTERNAL = "kafka:29092"       # used by Flink jobs in Docker
 
 TOPIC_MARKET_NEWS   = "market.news"

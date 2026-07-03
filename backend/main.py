@@ -10,6 +10,8 @@ from config import settings
 from database import test_connection
 from routers import portfolios, securities, market_events, analysis
 from routers.ws import router as ws_router, run_price_simulator, run_kafka_consumer
+from routers.risk import router as risk_router, ensure_table
+from routers.alerts import router as alerts_router, ensure_table as ensure_alerts_table
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,11 @@ async def lifespan(app: FastAPI):
     else:
         print("[FAIL] Database disconnected — check SQL Server")
 
-    # Launch WebSocket background tasks
+    ensure_table()
+    print("[OK]   Risk_Metrics table ready")
+    ensure_alerts_table()
+    print("[OK]   Alerts table ready")
+
     task_simulator = asyncio.create_task(run_price_simulator(), name="price-simulator")
     task_kafka     = asyncio.create_task(run_kafka_consumer(),  name="kafka-ws-bridge")
     print("[OK]   WebSocket background tasks started (price simulator + Kafka bridge)")
@@ -46,8 +52,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -58,6 +64,8 @@ app.include_router(securities.router,    prefix="/api/securities",    tags=["Sec
 app.include_router(market_events.router, prefix="/api/market-events", tags=["Market Events"])
 app.include_router(analysis.router,      prefix="/api/analysis",      tags=["Analysis"])
 app.include_router(ws_router,            tags=["WebSocket"])          # /ws  (no prefix)
+app.include_router(risk_router,   prefix="/api/risk",   tags=["Risk Analytics"])
+app.include_router(alerts_router, prefix="/api/alerts", tags=["Alerts"])
 
 
 @app.get("/")

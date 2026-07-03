@@ -1,9 +1,13 @@
-const BASE = "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      "ngrok-skip-browser-warning": "1",   // bypass ngrok free-tier interstitial
+      ...(options?.headers ?? {}),
+    },
   });
   if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
   return res.json();
@@ -89,10 +93,14 @@ export async function aiChatStream(
   onToken: (token: string) => void,
   onError: (err: string) => void,
   onDone: () => void,
+  onToolCall?: (toolName: string) => void,
 ): Promise<void> {
   const res = await fetch(`${BASE}/api/analysis/ai/chat`, {
     method:  "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "ngrok-skip-browser-warning": "1",
+    },
     body:    JSON.stringify({ portfolio_id, message, conversation_history: history }),
   });
 
@@ -119,6 +127,7 @@ export async function aiChatStream(
       try {
         const parsed = JSON.parse(data);
         if (parsed.error) { onError(parsed.error); onDone(); return; }
+        if (parsed.tool_call) { onToolCall?.(parsed.tool_call); continue; }
         if (parsed.token) onToken(parsed.token);
       } catch {
         // partial JSON chunk — skip
@@ -263,3 +272,107 @@ export interface AIRecommendations {
   rule_based: { recommendations_count: number; recommendations: { type: string; priority: number; title: string; description: string }[] };
   llm_usage: { total_cost_usd: number };
 }
+
+// ── Risk Analytics ────────────────────────────────────────────────────────────
+export interface VarData {
+  historical?: {
+    var_95_1d_pct: number;
+    var_99_1d_pct: number;
+    var_95_10d_pct: number;
+    var_99_10d_pct: number;
+  };
+  parametric?: {
+    var_95_1d_pct: number;
+    var_99_1d_pct: number;
+  };
+  distribution?: {
+    daily_vol_pct: number;
+    annualized_vol_pct: number;
+    skewness: number;
+    excess_kurtosis: number;
+  };
+  tickers_used?: string[];
+  tickers_missing?: string[];
+  observations?: number;
+  price_date?: string;
+  error?: string;
+}
+
+export interface StressTest {
+  name: string;
+  label: string;
+  portfolio_impact_pct: number;
+  worst_position: string;
+  worst_position_pct: number;
+  tickers_with_data: number;
+  tickers_total: number;
+}
+
+export interface FactorExposure {
+  factors?: Record<string, { beta: number; r_squared: number; ticker: string }>;
+  market_interp?: string;
+  observations?: number;
+  error?: string;
+}
+
+export interface RiskMetrics {
+  status: "ok" | "not_computed" | "computing";
+  portfolio_id?: number;
+  computed_at?: string;
+  price_date?: string;
+  var?: VarData;
+  stress_tests?: StressTest[];
+  factor_exposure?: FactorExposure;
+}
+
+export const getRiskMetrics = (portfolio_id: number) =>
+  apiFetch<RiskMetrics>(`/api/risk/${portfolio_id}`);
+
+export const refreshRiskMetrics = (portfolio_id: number) =>
+  apiFetch<{ status: string; portfolio_id: number }>(`/api/risk/${portfolio_id}/refresh`, {
+    method: "POST",
+  });
+
+export interface RiskHistoryPoint {
+  computed_at:      string;
+  price_date:       string | null;
+  var_95_1d_pct:    number | null;
+  var_99_1d_pct:    number | null;
+  stress_worst_pct: number | null;
+}
+
+export const getRiskHistory = (portfolio_id: number, days = 30) =>
+  apiFetch<RiskHistoryPoint[]>(`/api/risk/${portfolio_id}/history?days=${days}`);
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+export interface AlertItem {
+  alert_id:     number;
+  portfolio_id: number | null;
+  alert_type:   "threshold" | "event" | "ai";
+  severity:     "critical" | "warning" | "info";
+  title:        string;
+  message:      string;
+  is_read:      boolean;
+  triggered_at: string;
+}
+
+export const getAlerts = (params?: { portfolio_id?: number; unread_only?: boolean; limit?: number }) => {
+  const q = new URLSearchParams();
+  if (params?.portfolio_id !== undefined) q.set("portfolio_id", String(params.portfolio_id));
+  if (params?.unread_only)               q.set("unread_only", "true");
+  if (params?.limit)                     q.set("limit", String(params.limit));
+  return apiFetch<AlertItem[]>(`/api/alerts?${q.toString()}`);
+};
+
+export const getUnreadCount = (portfolio_id?: number) => {
+  const q = portfolio_id !== undefined ? `?portfolio_id=${portfolio_id}` : "";
+  return apiFetch<{ count: number }>(`/api/alerts/unread-count${q}`);
+};
+
+export const markAlertRead = (alert_id: number) =>
+  apiFetch<{ status: string }>(`/api/alerts/${alert_id}/read`, { method: "PATCH" });
+
+export const markAllAlertsRead = (portfolio_id?: number) => {
+  const q = portfolio_id !== undefined ? `?portfolio_id=${portfolio_id}` : "";
+  return apiFetch<{ status: string }>(`/api/alerts/read-all${q}`, { method: "PATCH" });
+};

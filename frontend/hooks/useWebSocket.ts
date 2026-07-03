@@ -25,7 +25,7 @@ export interface WsMessage {
   connections?: number;
 }
 
-const WS_URL = "ws://localhost:8000/ws";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws";
 const PING_INTERVAL_MS  = 20_000;   // heartbeat every 20 s
 const INITIAL_RETRY_MS  = 1_000;
 const MAX_RETRY_MS      = 30_000;

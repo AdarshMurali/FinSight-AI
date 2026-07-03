@@ -405,26 +405,121 @@ LLM_CONFIG = {
 
 ---
 
-#### Task 3.4: MCP (Model Context Protocol) Integration
-**Goal**: Use MCP for structured AI interactions
+#### Task 3.4: MCP Integration — Agentic AI + MCP Server
+**Goal**: Two complementary MCP additions that genuinely upgrade the AI layer and showcase
+the latest AI engineering patterns on the resume.
 
-**MCP Servers to Implement**:
-1. **Portfolio Data Server**
-   - Expose portfolio data as MCP resources
-   - Allow LLM to query positions, performance, transactions
+> **Background — three different "MCP" contexts in this project:**
+> - RAG.md mentions *consuming* external MCP servers (Yahoo Finance, FRED MCP) — we are the client
+> - Task 3.4a below is *building* an MCP server — we are the server exposing our tools
+> - Task 3.4b upgrades AI Chat using OpenAI function calling — same agentic concept, no MCP transport needed
+> All three are conceptually related but distinct in direction and implementation.
 
-2. **Market Data Server**
-   - Provide security prices, events
-   - Enable real-time data access for AI
+---
 
-3. **Analysis Tools Server**
-   - Expose calculation functions as MCP tools
-   - Allow LLM to trigger analytics
+#### Task 3.4a: Agentic AI Chat (OpenAI Function Calling)
+**Goal**: Upgrade `/chat` from static context injection to true agentic tool calling
+
+**The Problem with Current AI Chat**:
+The current `/chat` endpoint pre-loads a fixed portfolio snapshot + RAG context into every
+prompt. The LLM answers from that static block. If the user's question needs data outside
+that snapshot, quality degrades.
+
+**The Agentic Upgrade**:
+GPT-4o autonomously decides which tools to call based on the question.
+The LLM drives data retrieval — it fetches exactly what it needs, nothing more.
+
+```
+Before: User question → [pre-loaded data block] → GPT-4o → answer
+After:  User question → GPT-4o thinks → calls tool(s) → gets live data → answer
+```
+
+**Tools to expose to GPT-4o**:
+| Tool | Calls | When LLM invokes it |
+|---|---|---|
+| `get_portfolio_data` | PortfolioAnalyzer | "What is my sector allocation?" |
+| `get_position_history` | PositionChangeDetector | "What changed in October?" |
+| `search_market_context` | MarketRAGEngine (ChromaDB) | "Why did tech drop?" |
+| `get_market_events` | SQL MarketEvents table | "What events affected energy?" |
+| `run_risk_analysis` | RecommendationEngine | "What are my biggest risks?" |
+
+**Implementation**:
+- Modify `backend/services/ai_chat_service.py`
+- Pass `tools=[...]` to OpenAI API call
+- Handle `tool_calls` in response, execute the right service, feed results back
+- Continue streaming after tool results are injected
+- No new pip dependencies — function calling is built into `openai` SDK
 
 **Deliverables**:
-- MCP server implementations
-- MCP client integration
-- Tool/resource definitions
+- Updated `ai_chat_service.py` with tool definitions and tool execution loop
+- `backend/services/ai_tools.py` — thin wrapper mapping tool names to service calls
+- Updated frontend chat UI to show "Calling tool: get_portfolio_data..." during tool execution
+
+---
+
+#### Task 3.4b: FastMCP Server (Custom MCP Server)
+**Goal**: Expose FinSight's portfolio analysis tools as a standards-compliant MCP server
+so any MCP-compatible AI client can connect and query portfolio data directly
+
+**What this enables**:
+- Connect Claude Desktop → FinSight MCP Server → SQL Server / ChromaDB
+- Portfolio managers can query their data from Claude Desktop, Cursor, GitHub Copilot Chat
+- Demonstrates MCP server development on resume
+
+**Architecture**:
+```
+[Claude Desktop / Cursor / any MCP client]
+            ↓  stdio / SSE transport
+[FinSight FastMCP Server  :8002]
+            ↓
+[SQL Server]  [ChromaDB]  [PortfolioAnalyzer]
+```
+
+**Tools to expose**:
+- `get_portfolio_summary(portfolio_id)` — full portfolio state from SQL Server
+- `get_portfolio_positions(portfolio_id, sector?)` — positions with weights
+- `search_market_context(query, n_results?)` — semantic search across ChromaDB
+- `analyze_portfolio_risk(portfolio_id)` — risk metrics, concentration, recommendations
+- `get_market_events(impact_level?, limit?)` — recent market events from SQL Server
+
+**Resources to expose**:
+- `portfolio://{portfolio_id}` — portfolio data as an MCP resource
+- `market-event://{event_id}` — event detail as an MCP resource
+
+**Technology**:
+- `pip install fastmcp` (Anthropic's high-level MCP server library)
+- Single file: `backend/mcp_server.py` using `@mcp.tool()` decorators
+- Start: `python backend/mcp_server.py` (runs on stdio for Claude Desktop, or SSE on :8002)
+
+**Claude Desktop config** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "finsight": {
+      "command": "python",
+      "args": ["C:/Agentic_AI/FinSight-AI/backend/mcp_server.py"]
+    }
+  }
+}
+```
+
+**New package required**:
+```
+fastmcp>=0.1.0
+```
+
+**Deliverables**:
+- `backend/mcp_server.py` — FastMCP server with 5 tools and 2 resources
+- Claude Desktop configuration for local testing
+- Updated `requirements.txt`
+- Demo: Claude Desktop querying live portfolio data and running risk analysis
+
+---
+
+**Resume showcase value**:
+- "Built a Model Context Protocol (MCP) server exposing hedge fund portfolio analytics to any MCP-compatible AI client"
+- "Implemented agentic AI assistant with GPT-4o autonomous tool calling for dynamic, context-aware financial analysis"
+- "Designed multi-tool AI agent that selects and executes the right data retrieval strategy per query"
 
 ---
 
@@ -524,93 +619,174 @@ LLM_CONFIG = {
 ### **PHASE 5: Advanced Features**
 **Duration**: 2-3 weeks
 
-#### Task 5.1: Advanced Analytics
-**Goal**: Implement sophisticated portfolio analytics
+#### Task 5.1: Advanced Risk Analytics ✅ COMPLETE
+**Goal**: Implement daily VaR, stress testing, and factor exposure per portfolio
+
+**What was built**:
+1. **Risk Computation** (`backend/services/risk_analytics.py`)
+   - Historical VaR (95%, 99%, 1-day, 10-day) — rolling 252-day returns via yfinance
+   - Parametric VaR (normal distribution)
+   - Return distribution stats: volatility, skewness, kurtosis
+   - 6 stress test scenarios: 2008 Crisis, COVID Crash, Rate Hike, Tech Crash, Oil Shock, Stagflation
+   - Factor exposure: Market beta, Tech beta, Value beta, Momentum beta vs. benchmark ETFs
+
+2. **Daily Job** (`backend/scripts/risk_job.py`)
+   - Loops all portfolios, runs `compute_all()`, saves to `Risk_Metrics` table
+   - AWS EventBridge Scheduler (`finsight-daily-risk-job`) triggers at 17:30 ET Mon-Fri
+   - SSM SendCommand → EC2 `i-06df445415d082798` (finsight-flink) → `risk_job.py`
+   - Logs to `/var/log/finsight_risk.log` on EC2
+   - Local run: `python scripts/risk_job.py` from `backend/`
+
+3. **REST API** (`backend/routers/risk.py`)
+   - `GET /api/risk/{portfolio_id}` — latest stored metrics (fast, no recompute)
+   - `POST /api/risk/{portfolio_id}/refresh` — on-demand recompute (~10-30s)
+
+4. **Frontend** (`frontend/app/portfolios/[id]/page.tsx` — Risk Analytics tab)
+   - VaR grid (historical 95%/99%, parametric, 10-day)
+   - 6 stress test cards with impact bars
+   - Factor exposure table with beta values and R²
+
+5. **Data Storage** (`Risk_Metrics` table, SQL Server)
+   - One row per portfolio per day — historical record accumulates
+   - Fields: `var_data`, `stress_data`, `factor_data` (JSON), `computed_at`, `price_date`
+
+**Run command (local)**:
+```powershell
+cd "C:\Agentic_AI\FinSight-AI\backend"
+& "C:\Agentic_AI\FinSight-AI\finsightaivenv\Scripts\python.exe" scripts/risk_job.py
+```
+
+---
+
+#### Task 5.2: Alert System ✅ COMPLETE
+**Goal**: Proactive threshold monitoring and in-app notifications
+
+**What was built**:
+
+1. **Alert Model** (`backend/models.py` — `Alert` class)
+   - Fields: `alert_id`, `portfolio_id`, `alert_type`, `severity`, `title`, `message`, `is_read`, `triggered_at`
+   - `alert_type`: threshold | event | ai  |  `severity`: critical | warning | info
+
+2. **Alert Engine** (`backend/services/alert_engine.py`)
+   - VaR 95% > 2% (warning), VaR 99% > 3.5% (critical), Stress < -25% (warning), Stress < -40% (critical), Market beta > 1.5 (warning)
+   - Deduplication: one alert per title per portfolio per day
+   - Runs automatically after each portfolio in `risk_job.py`
+
+3. **Alerts REST API** (`backend/routers/alerts.py`)
+   - `GET /api/alerts` — filters: `portfolio_id`, `unread_only`, `limit`
+   - `GET /api/alerts/unread-count` — returns `{"count": N}`
+   - `PATCH /api/alerts/{alert_id}/read` — mark single alert read
+   - `PATCH /api/alerts/read-all` — mark all read, optional `portfolio_id` filter
+
+4. **Frontend — Sidebar Bell** (`frontend/components/Sidebar.tsx`)
+   - Bell icon with red unread badge, polls every 60 seconds
+   - Slide-out panel (320px) — severity-colored per alert, mark individual / mark all
+
+5. **Frontend — Risk Tab Inline Alerts** (`frontend/app/portfolios/[id]/page.tsx`)
+   - Alert panel at top of Risk Analytics tab, portfolio-specific (`portfolio_id` filter)
+   - Loaded alongside risk metrics when Risk tab opens
+
+**Currently implemented**: threshold alerts only. Event alerts and AI-generated alerts are stubbed (column exists, no engine yet).
+
+**Pending (Task 5.2 sub-items)**:
+- **Event alerts** — when a `Market_Events` row fires (e.g. Fed rate hike), scan portfolios for exposure to affected sectors/securities and raise an `alert_type='event'` alert. Needs: event→sector mapping logic + trigger hook in `alert_engine.py`.
+- **AI-generated alerts** — GPT-4o proactively reviews a portfolio (news sentiment + positions + recent price moves) and raises a natural-language `alert_type='ai'` alert, e.g. "Heavy NVDA exposure is elevated risk given GPU export news." Needs: new function in `alert_engine.py` that calls OpenAI with portfolio + RAG context and parses the response into an Alert row.
+
+---
+
+#### Task 5.2b: ChromaDB Data Retention (Optional — Review Before Implementing)
+**Goal**: Prevent ChromaDB from growing unbounded due to continuous Flink news ingestion
+
+**Background**:
+The Flink `news_sentiment_job` writes one document per unique news article into the
+`market_news` collection. With Finnhub polling every 2 minutes, this grows steadily over
+time. ChromaDB has no native TTL — retention must be implemented as a scheduled cleanup job.
+
+**Recommended Retention Policy**:
+| Collection | Keep | Reason |
+|---|---|---|
+| `market_news` | Last 90 days | Older news has little RAG value for current portfolio analysis |
+| `volatility_events` | Last 2 years | Historical volatility patterns remain useful for context |
+| `macro_indicators` | Permanent | FRED monthly series — compact and always relevant |
+| `ohlcv_data` | Permanent | Historical prices — compact and always relevant |
+| `sec_filings` / `earnings` | Last 3 years | Financial filings retain value for longer periods |
+| `analyst_research` | Last 1 year | Analyst ratings go stale relatively quickly |
+
+**Implementation Approach**:
+- Scheduled cleanup function (weekly) that queries each collection via metadata filter
+- ChromaDB supports `where={"published_at": {"$lt": cutoff_date}}` for filtering
+- Delete matched IDs using `collection.delete(ids=[...])`
+- Can be wired into the Phase 5.2 alert/monitoring infrastructure as a maintenance task
+
+```python
+# Sketch — backend/rag/retention.py
+def purge_old_news(days_to_keep=90):
+    from datetime import datetime, timedelta, timezone
+    import chromadb
+    chroma     = chromadb.HttpClient(host="localhost", port=8001)
+    collection = chroma.get_collection("market_news")
+    cutoff     = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).isoformat()
+    results    = collection.get(where={"published_at": {"$lt": cutoff}}, include=[])
+    if results["ids"]:
+        collection.delete(ids=results["ids"])
+        print(f"Purged {len(results['ids'])} articles older than {days_to_keep} days")
+```
+
+**When to implement**: Only needed once ChromaDB `market_news` document count
+exceeds ~50,000 docs or disk usage on `chroma_data` volume approaches 2GB.
+Check with: `collection.count()` or `docker system df -v`.
+
+**Note on MCP servers (Yahoo Finance / AlphaVantage / FRED)**:
+These are a separate concept from Flink. MCP servers are called ON DEMAND by the LLM
+during a conversation to fetch live data (e.g. current stock price, today's Fed rate).
+Flink is a BACKGROUND pipeline that pre-loads data into ChromaDB for semantic RAG search.
+They are complementary — MCP is relevant only if we add Claude API tool-use or
+agentic capabilities in a future phase.
+
+**Deliverables** (if implemented):
+- `backend/rag/retention.py` — collection-aware purge function with configurable TTL per collection
+- Scheduled task wired into FastAPI lifespan or a Celery beat job
+- Monitoring log showing doc counts before/after each purge run
+
+---
+
+#### Task 5.3: Risk Trend Visualization ✅ COMPLETE
+**Goal**: Exploit the historical `Risk_Metrics` rows that accumulate daily to show how portfolio risk evolves over time
+
+**Why this matters**:
+`risk_job.py` inserts one row per portfolio per day. Currently only the latest row is read.
+The history is being silently built up and not yet used. This task surfaces that data.
 
 **Features**:
-1. **Risk Analytics**
-   - VaR (Value at Risk) calculation
-   - Stress testing scenarios
-   - Correlation matrices
-   - Factor exposure analysis
+1. **VaR Trend Chart** (Risk Analytics tab)
+   - Line chart: last 30 days of `var_95_1d_pct` and `var_99_1d_pct`
+   - Highlight the day VaR first crossed warning/critical threshold
+   - Powered by the existing `Risk_Metrics` historical rows — no new computation
 
-2. **Attribution Analysis**
-   - Multi-level performance attribution
-   - Transaction cost analysis
-   - Alpha/beta decomposition
+2. **Stress Test Trend** (optional)
+   - Show how `2008 Crisis` scenario impact % changed over the past month
+   - Indicates whether portfolio is becoming more or less resilient over time
 
-3. **Optimization**
-   - Portfolio optimization suggestions (mean-variance)
-   - Constraint-based rebalancing
-   - Tax-loss harvesting opportunities
+3. **Alert Correlation** (optional)
+   - Overlay threshold-breach alert dates on the VaR trend chart
+   - Makes it obvious that alerts fired when VaR was elevated
 
-**Deliverables**:
-- Advanced analytics modules
-- Optimization algorithms
-- Risk modeling framework
+**Backend changes needed**:
+- New endpoint: `GET /api/risk/{portfolio_id}/history?days=30`
+  - Returns array of `{computed_at, var_95_1d_pct, var_99_1d_pct, stress_worst_pct}` rows
+  - Query: `ORDER BY computed_at DESC LIMIT N` on `Risk_Metrics` table
 
----
+**Frontend changes needed**:
+- Add a Recharts `LineChart` in the Risk Analytics tab (below VaR grid)
+- Fetch history when Risk tab opens (alongside existing `getRiskMetrics()` call)
+- Show "No history yet — run the risk job daily to build trend data" if < 2 rows exist
 
-#### Task 5.2: Alert System
-**Goal**: Proactive monitoring and notifications
-
-**Alert Types**:
-1. **Threshold Alerts**
-   - Position weight > threshold
-   - Drawdown exceeds limit
-   - Volatility spike
-   - Concentration risk
-
-2. **Event Alerts**
-   - New market event affecting portfolio
-   - Significant position change detected
-   - Performance anomaly
-
-3. **AI-Generated Alerts**
-   - Unusual pattern detected
-   - Emerging risk identified
-   - Opportunity spotted
-
-**Delivery Channels**:
-- In-app notifications
-- Email (optional)
-- Webhook integrations
+**No new pip dependencies** — Recharts is already in the frontend; SQL query is trivial.
 
 **Deliverables**:
-- Alert rule engine
-- Notification service
-- Alert management UI
-
----
-
-#### Task 5.3: Report Generation
-**Goal**: Automated PDF/Excel report generation
-
-**Report Types**:
-1. **Daily Summary**
-   - Portfolio performance
-   - Position changes
-   - Key events
-
-2. **Monthly Performance Report**
-   - Detailed attribution
-   - Risk metrics
-   - Commentary (AI-generated)
-
-3. **Ad-hoc Analysis Report**
-   - Custom date ranges
-   - Specific event analysis
-   - What-if scenarios
-
-**Technology**:
-- ReportLab (PDF)
-- Pandas/Openpyxl (Excel)
-- Jinja2 templates
-
-**Deliverables**:
-- Report generation service
-- Template library
-- Scheduling system
+- `GET /api/risk/{portfolio_id}/history` endpoint
+- VaR trend chart component on Risk tab
+- (Optional) stress test trend + alert overlay
 
 ---
 
@@ -638,11 +814,20 @@ LLM_CONFIG = {
 #### Task 6.2: Redis Caching Strategy
 **Goal**: Implement caching for performance
 
-**Cache Patterns**:
-1. **Portfolio data cache** (TTL: 5 minutes)
-2. **Market data cache** (TTL: 1 minute)
-3. **AI response cache** (TTL: 1 hour, keyed by query+context hash)
-4. **Computation results** (TTL: 15 minutes)
+**What to cache (priority order)**:
+| What | TTL | Reason |
+|---|---|---|
+| Risk metrics (`/api/risk/{id}`) | 24h | Computed once/day — no reason to hit SQL on every tab open |
+| Portfolio summary + positions | 5 min | Heavy SQL joins; data changes only on transactions |
+| Unread alert count | 60s | Sidebar polls every 60s — trivial to cache |
+| AI chat responses | 1h (keyed by query hash) | Saves OpenAI cost on repeated identical questions |
+| yfinance price fetches | 30s | Risk refresh hits yfinance per ticker — slow without cache |
+
+**What NOT to cache**: WebSocket price ticks (streaming by nature), Flink/Kafka data.
+
+**AWS deployment options** (decide when implementing):
+- **Option A — Install on existing EC2**: `apt install redis` on the ChromaDB t3.micro. Free, uses spare capacity, good enough for demo.
+- **Option B — AWS ElastiCache**: Managed Redis, ~$15-20/month for `cache.t3.micro`. Overkill for this project but resume-worthy if budget allows.
 
 **Deliverables**:
 - Redis integration
@@ -746,6 +931,214 @@ LLM_CONFIG = {
 
 ---
 
+---
+
+## Technologies / Features Worth Adding (Review Before Each Phase)
+
+These were identified as gaps that add resume value or practical robustness. Revisit when working on the relevant phase — don't implement blindly, options may need re-evaluation.
+
+| Item | Priority | Notes |
+|---|---|---|
+| **JWT Auth** | High | Currently zero auth — any reviewer can hit the public API. Even a fake login flow adds credibility to the demo. Wire into FastAPI OAuth2PasswordBearer. |
+| **Langfuse (LLM tracing)** | High | Free tier. Tracks every GPT-4o call — tokens, latency, tool calls, cost. 20-minute add. Strong resume signal for LLM engineering maturity. |
+| **Rate limiting** (`slowapi`) | Medium | One-liner FastAPI middleware. Prevents API abuse on public demo. |
+| **Prometheus + Grafana** | Medium | Observability story for resume. Both free/open-source, can run on EC2. Shows production-readiness mindset. |
+| **ChromaDB static collections on AWS** | Medium | `macro_indicators`, `earnings_filings`, `fed_communications` only exist locally. Options: re-run loader pointing at AWS host, or rsync collection folders + merge sqlite metadata (fragile). |
+| **ChromaDB data retention job** | Low | See Task 5.2b. Only needed once `market_news` exceeds ~50K docs or disk > 2GB. |
+| **BigQuery Analytics Layer** | Medium | Free forever (1 TB queries/month, 10 GB storage). See Task 7.1 below for full integration plan. Strong resume signal — classic OLTP (Azure SQL) + OLAP (BigQuery) architecture. |
+
+---
+
+### **PHASE 7: BigQuery Analytics Integration** (Future — Review When Time Allows)
+
+#### Task 7.1: Google BigQuery as Analytics Layer
+**Goal**: Add BigQuery as a read-side analytics store alongside Azure SQL, enabling complex
+historical queries (correlation matrices, rolling volatility, multi-year trends) that would
+be slow or expensive to run directly on the operational SQL Server database.
+
+**Free tier**: Always Free — 10 GB storage + 1 TB queries/month. No expiry.
+
+**Architecture**:
+```
+Azure SQL Server (operational)          Google BigQuery (analytics)
+  ├── Portfolios / Users                  ├── Historical OHLCV (5+ years)
+  ├── Positions / Transactions            ├── Pre-aggregated risk metrics
+  ├── Real-time alerts                    ├── Correlation matrices
+  └── Market Events                       └── Sector performance aggregates
+              │                                       │
+              └───────────── FastAPI ─────────────────┘
+                                 │
+                             Next.js UI
+```
+
+**Rule**: Azure SQL handles transactional/operational reads. BigQuery handles analytical/historical queries.
+
+---
+
+**Data Sync Strategy (choose one when implementing)**:
+
+- **Option A — Daily Python script** (simplest to start):
+  Dump OHLCV + risk metrics from Azure SQL → BigQuery via `google-cloud-bigquery` client.
+  ```python
+  df = pd.read_sql("SELECT * FROM OHLCV_Data WHERE date = CAST(GETDATE() AS DATE)", conn)
+  bq_client.load_table_from_dataframe(df, "dataset.ohlcv_data")
+  ```
+
+- **Option B — ChromaDB loader feeds both** (cleanest):
+  The existing `chromadb_setup.py` already fetches yfinance data. Add a parallel write
+  path to BigQuery in the same pipeline.
+
+- **Option C — Flink → BigQuery sink** (most impressive for showcase):
+  Use Google's Flink BigQuery connector. Makes the full pipeline end-to-end visible.
+  Real-time streaming data lands directly in BigQuery.
+
+---
+
+**Showcase Features to Build**:
+
+1. **Portfolio Correlation Heatmap** (`/analytics` page)
+   - "How correlated are my holdings over the last 2 years?"
+   - BigQuery window functions handle this across millions of rows in seconds
+   - Frontend: color-coded matrix (Recharts or D3)
+
+2. **Historical Volatility Chart**
+   - Rolling N-day volatility using BigQuery `STDDEV()` window function
+   - User can select 30/60/90-day window
+   - Much faster than computing in Python/Pandas
+
+3. **Sector Performance Dashboard**
+   - Group portfolio/watchlist by sector
+   - Show 1M / 3M / 1Y / 5Y performance per sector
+   - Aggregates across thousands of tickers in seconds
+
+4. **Backtesting** ("What if I bought X stock 3 years ago?")
+   - BigQuery stores full historical OHLCV
+   - FastAPI calculates returns and benchmark comparison
+   - Very demo-friendly, visually striking
+
+5. **AI Chat Tool: `query_historical_analytics`**
+   - Add BigQuery as a 6th tool in the agentic chat (Task 3.4a)
+   - User: "How volatile was NVDA in 2023 vs 2024?"
+   - LLM queries BigQuery, returns data-backed answer
+
+6. **Anomaly History** (ties into Flink volatility detection)
+   - Flink detects real-time volatility → writes flags to BigQuery
+   - BigQuery stores the history of anomalies
+   - Show: "This stock had unusual volatility 12 times in the last year"
+
+---
+
+**FastAPI Integration**:
+```python
+# pip install google-cloud-bigquery pandas-gbq
+from google.cloud import bigquery
+
+bq_client = bigquery.Client(project="your-gcp-project")
+
+@router.get("/analytics/historical-volatility/{symbol}")
+async def get_historical_volatility(symbol: str, window_days: int = 30):
+    query = f"""
+    SELECT date, symbol,
+        STDDEV(daily_return) OVER (
+            ORDER BY date ROWS BETWEEN {window_days} PRECEDING AND CURRENT ROW
+        ) AS rolling_volatility
+    FROM `your_dataset.ohlcv_data`
+    WHERE symbol = @symbol
+    ORDER BY date DESC LIMIT 365
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("symbol", "STRING", symbol)]
+    )
+    df = bq_client.query(query, job_config=job_config).to_dataframe()
+    return df.to_dict("records")
+```
+
+**New dependency**: `google-cloud-bigquery`, `pandas-gbq`
+
+**Resume value**:
+- "Designed OLTP + OLAP architecture: Azure SQL for operational data, BigQuery for analytics"
+- "Integrated Google BigQuery for historical financial analytics — correlation matrices, rolling volatility, sector heatmaps"
+- "Extended agentic AI chat with BigQuery tool for multi-year data-backed question answering"
+
+**Prerequisites before starting**:
+- Log into existing GCP account at `console.cloud.google.com`
+- Create a project and enable BigQuery API
+- Create a service account + download JSON key
+- Set `GOOGLE_APPLICATION_CREDENTIALS` env variable
+
+**Deliverables** (when implementing):
+- `backend/services/bigquery_service.py` — BQ client + query helpers
+- `backend/routers/analytics.py` — new `/api/analytics/` endpoints
+- Daily sync script or Flink BQ sink (Option A/B/C above)
+- `frontend/app/analytics/page.tsx` — Portfolio Analytics page with charts
+- Updated `requirements.txt`
+
+---
+
+---
+
+## PHASE 7: Security Hardening (Good to Have — Do Later)
+
+### Task 7.1: HTTPS / TLS Encryption (Data in Transit)
+
+All data between the browser and backend travels over the internet — currently unencrypted if served over plain HTTP. Financial data (portfolio values, positions, AI responses) must be encrypted in transit.
+
+**What to do:**
+- **Vercel frontend** — already HTTPS by default. Nothing to do.
+- **FastAPI backend (ngrok demo mode)** — ngrok tunnels are already HTTPS. Nothing to do for demos.
+- **FastAPI backend (production deployment)** — if/when backend moves to cloud (EC2, ECS, etc.), put it behind an **Application Load Balancer (ALB)** with an ACM certificate, or use **nginx + Let's Encrypt (Certbot)** as a reverse proxy.
+- **AWS EC2 services (ChromaDB, Kafka)** — currently only accessed server-to-server (private IP). If ever exposed publicly, add TLS. For now, security groups limiting access to known IPs is sufficient.
+- **WebSocket (`ws://`)** — must become `wss://` (already done for Vercel + ngrok setup).
+
+**Checklist when going production:**
+- [ ] ALB + ACM cert OR nginx + Certbot on backend EC2
+- [ ] All `NEXT_PUBLIC_API_URL` uses `https://`, `NEXT_PUBLIC_WS_URL` uses `wss://`
+- [ ] HSTS header on API responses
+- [ ] Verify no mixed-content warnings in browser console
+
+---
+
+### Task 7.2: AWS Secrets Manager (Credentials & API Keys)
+
+Currently all secrets (OpenAI key, Finnhub key, DB password, etc.) live in `.env` files on disk. For production, these should be stored in AWS Secrets Manager — no plaintext secrets on EC2 or in environment variables baked into Docker images.
+
+**What to migrate:**
+| Secret | Current location | Move to |
+|---|---|---|
+| `OPENAI_API_KEY` | `backend/.env`, EC2 `.env` | Secrets Manager |
+| `FINNHUB_API_KEY` | `backend/.env`, EC2 `.env` | Secrets Manager |
+| `FRED_API_KEY` | `backend/.env` | Secrets Manager |
+| `AlphaVantage_API_KEY` | `backend/.env` | Secrets Manager |
+| SQL Server `sa` password | `backend/.env` | Secrets Manager |
+| Azure SQL connection string | `backend/.env` | Secrets Manager |
+
+**Implementation approach:**
+1. Store each secret in AWS Secrets Manager (ap-south-1) via console or CLI
+2. Attach `secretsmanager:GetSecretValue` permission to the EC2 IAM role
+3. At app startup, fetch secrets via `boto3.client('secretsmanager').get_secret_value()`
+4. Inject into `os.environ` before FastAPI / producers initialize
+5. Remove `.env` files from EC2 (keep local `.env` for dev only)
+
+**Rough code pattern:**
+```python
+import boto3, json, os
+
+def load_secrets(secret_name: str, region: str = "ap-south-1"):
+    client = boto3.client("secretsmanager", region_name=region)
+    response = client.get_secret_value(SecretId=secret_name)
+    secrets = json.loads(response["SecretString"])
+    for k, v in secrets.items():
+        os.environ[k] = v
+
+load_secrets("finsight/prod")  # call before app init
+```
+
+**Prerequisites:**
+- EC2 instance profile must have `secretsmanager:GetSecretValue` on the secret ARN
+- `boto3` already installed in venv
+
+---
+
 **Created**: 2026-06-14
-**Last Updated**: 2026-06-14
-**Status**: Planning Phase - Ready to Start Phase 1
+**Last Updated**: 2026-07-03
+**Status**: Phase 5 in progress — Tasks 5.1, 5.2 (threshold alerts), 5.3 complete. Pending: 5.2 event alerts + AI alerts.
