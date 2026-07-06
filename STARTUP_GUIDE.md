@@ -4,74 +4,85 @@ After every system restart, follow these steps **in order**. Each service depend
 
 ---
 
+## Current Infrastructure (as of 2026-07-06)
+
+All data services are now fully in the cloud — **Docker Desktop is no longer required** for normal operation.
+
+| Component | Where | Address |
+|---|---|---|
+| **SQL Server** | Azure SQL | `finsight-sql-server.database.windows.net` |
+| **ChromaDB** | AWS EC2 `finsight-chromadb` | `13.206.225.80:8001` |
+| **Kafka + Flink** | AWS EC2 `finsight-flink` | `13.233.21.229` |
+| **MCP Server** | AWS EC2 `finsight-flink` | `13.233.21.229:8002` |
+| **Backend API** | Local (until CI/CD) | `localhost:8000` |
+| **Frontend** | Local (until CI/CD) or Vercel | `localhost:3000` / Vercel |
+
+> **Future plan**: Containerise frontend + backend and deploy via GitHub Actions CI/CD pipeline (Phase 6). For now, manual SCP deployment.
+
+---
+
 ## Step 0 — Prerequisites
 
-Ensure **Docker Desktop** is running before anything else.  
-Check the system tray — the Docker icon should be solid (not spinning).
+**Docker Desktop is no longer required** — all data services run on AWS and Azure.
+
+The only local processes you need to start are the FastAPI backend (Step 4) and Next.js frontend (Step 5).
 
 ---
 
-## Step 1 — SQL Server
+## Step 1 — SQL Server (Azure — always on)
 
-SQL Server must come up first because the FastAPI backend connects to it on startup.
+SQL Server is hosted on Azure SQL — **no local action needed**. It is always available.
 
-### Start (if container already exists)
+### Verify connection
 ```powershell
-docker start sqlserver1
+Invoke-RestMethod http://localhost:8000/health
+```
+Expected: `{"status": "healthy", "database": "connected"}`  
+(Run this after starting the backend in Step 4)
+
+**Azure SQL connection string** (in `backend/.env`):
+```
+DB_SERVER=finsight-sql-server.database.windows.net
+DB_NAME=FinSight_AI
+DB_USER=finsightadmin
+DB_PASSWORD=Pakasu@5
+DB_ODBC_DRIVER=ODBC Driver 18 for SQL Server
 ```
 
-### Recreate from scratch (if container was deleted)
-```powershell
-docker run -d `
-  --name sqlserver1 `
-  --memory 1g `
-  -e "ACCEPT_EULA=Y" `
-  -e "MSSQL_SA_PASSWORD=Pakasu@5" `
-  -e "MSSQL_PID=developer" `
-  -e "MSSQL_MEMORY_LIMIT_MB=768" `
-  -p 1433:1433 `
-  -v sqlserver_data:/var/opt/mssql `
-  --restart unless-stopped `
-  mcr.microsoft.com/mssql/server:2022-latest
-```
-
-### Wait for SQL Server to be ready (~15-20 seconds), then verify
-```powershell
-docker exec sqlserver1 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Pakasu@5" -No -Q "SELECT name FROM sys.databases WHERE name = 'FinSight_AI';"
-```
-Expected output: `FinSight_AI`
-
-> **Memory note**: SQL Server is capped at 1GB Docker memory and 768MB internally.  
-> If it crashes with OOM errors, recreate with the command above — data is safe in the `sqlserver_data` volume.
+> Legacy local Docker setup is archived — see git history if needed.
 
 ---
 
-## Step 2 — ChromaDB
+## Step 2 — ChromaDB (AWS EC2 — auto-managed)
 
-ChromaDB holds 24,000+ document embeddings used by all AI features (AI Insights, AI Chat, recommendations).
+ChromaDB holds 39,000+ document embeddings. It runs on AWS EC2 `finsight-chromadb` (`13.206.225.80:8001`).  
+The EC2 is auto-started/stopped Mon–Fri 9:20 AM / 4:25 PM ET by the Lambda scheduler.
 
-### Start (if container already exists)
+### Verify ChromaDB is up
 ```powershell
-docker start FinSight_AI_chromadb
-```
-
-### Recreate from scratch (if container was deleted)
-```powershell
-docker run -d `
-  --name FinSight_AI_chromadb `
-  -p 8001:8000 `
-  -v chroma_data:/data `
-  ghcr.io/chroma-core/chroma:latest
-```
-
-### Verify
-```powershell
-Invoke-RestMethod http://localhost:8001/api/v2/heartbeat
+Invoke-RestMethod "http://13.206.225.80:8001/api/v2/heartbeat"
 ```
 Expected: `{"nanosecond heartbeat": <number>}`
 
-> **Memory note**: ChromaDB lazy-loads vector indexes into RAM only when queried.  
-> Memory starts at ~13MB and grows to ~250-500MB as collections are accessed. This is normal.
+### If it's down — SSH and restart
+```bash
+ssh -i C:\Agentic_AI\aws\finsight-key.pem ec2-user@13.206.225.80
+cd /home/ec2-user/chromadb && docker compose up -d
+```
+
+### ChromaDB collections (39,000+ total docs)
+| Collection | Docs | Source |
+|---|---|---|
+| `sec_filings` | 17,200 | SEC EDGAR quarterly/annual reports |
+| `ohlcv_data` | 7,991 | 5-year monthly OHLCV, 131 securities |
+| `macro_indicators` | 5,918 | FRED 40+ series 2019–present |
+| `market_news` | ~4,000+ | Live Finnhub stream via Flink |
+| `fed_communications` | 4,034 | Fed rate decisions + statements |
+| `dividends_data` | 2,226 | yfinance dividends, 131 securities |
+| `volatility_events` | live | Flink volatility detector |
+| `earnings_data` | 400 | Quarterly earnings history |
+| `analyst_recommendations` | 100 | Analyst buy/sell/hold |
+| `splits_data` | varies | Stock split events |
 
 ---
 
@@ -786,3 +797,190 @@ The cron window fires once at 9:25 AM ET. If the EC2 starts late (Lambda delay o
 | Trade producer shows `401 Unauthorized` | `.env` not sourced — follow Step 4 manual restart above |
 | Flink job not RUNNING | Run `docker compose ps` on Flink EC2 — if containers are down, run `cd /home/ec2-user/FinSight-AI/aws/ec2-flink && docker compose up -d`, then resubmit: `docker exec finsight-flink-jobmanager flink run --detached -py /opt/flink/jobs/volatility_detector_job.py` |
 | ChromaDB document count stuck at 0 | Check `docker logs finsight-flink-taskmanager --tail 30` for ERROR lines. No errors + NORMAL outputs = market is calm, no 1.5% moves yet — this is expected |
+
+---
+
+## Section 8: MCP Server — FinSight AI on Claude / Cursor / VS Code
+
+The MCP (Model Context Protocol) server exposes FinSight's portfolio intelligence as tools
+that any AI assistant can call. Fund managers can query live portfolios, risk metrics,
+market context, and ChromaDB's 39,000+ financial documents — all from within Claude Desktop,
+Cursor, or VS Code.
+
+**The server runs permanently on the Flink EC2 in SSE (HTTP) mode.**
+
+### Server Details
+
+| Field | Value |
+|---|---|
+| EC2 | `finsight-flink` — `13.233.21.229` |
+| Port | `8002` |
+| SSE endpoint | `http://13.233.21.229:8002/sse` |
+| Python venv | `/home/ec2-user/FinSight-AI/mcpvenv` (Python 3.11) |
+| Start script | `/home/ec2-user/FinSight-AI/backend/mcp_server.py` |
+| Log file | `/home/ec2-user/logs/mcp_server.log` |
+| PID file | `/home/ec2-user/mcp_server.pid` |
+
+### 8 Tools exposed
+
+| Tool | What it does |
+|---|---|
+| `list_portfolios` | All portfolios with customer, total value, strategy |
+| `get_portfolio_summary` | Sector allocation, top 10 positions, YTD/MTD performance |
+| `get_portfolio_positions` | Position table — filter by sector |
+| `get_portfolio_risk` | Latest VaR, 6 stress tests, factor exposure |
+| `get_portfolio_alerts` | Active alerts (threshold / event / AI) |
+| `search_market_context` | Semantic search across 39,000+ ChromaDB docs |
+| `get_market_events` | Structured Fed/geopolitical/sector events from DB |
+| `refresh_portfolio_risk` | Re-compute VaR + stress + factor from live prices |
+
+---
+
+### IMPORTANT — Open Port 8002 in AWS Security Group
+
+Port 8002 must be open in the `finsight-flink-sg` security group before external clients can connect.
+
+**Steps (AWS Console):**
+1. Go to **AWS Console → EC2 → Security Groups**
+2. Find `finsight-flink-sg`
+3. Click **Edit inbound rules → Add rule**
+4. Set: Type = `Custom TCP`, Port = `8002`, Source = `0.0.0.0/0`
+5. Click **Save rules**
+
+Without this step, clients outside the EC2 cannot reach the MCP server.
+
+---
+
+### Start / Restart MCP Server
+
+```bash
+ssh -i C:\Agentic_AI\aws\finsight-key.pem ec2-user@13.233.21.229
+
+# Kill existing process (if any)
+kill $(cat /home/ec2-user/mcp_server.pid) 2>/dev/null
+
+# Start in SSE mode
+PYTHONUNBUFFERED=1 nohup /home/ec2-user/FinSight-AI/mcpvenv/bin/python \
+  /home/ec2-user/FinSight-AI/backend/mcp_server.py \
+  --transport sse --port 8002 \
+  > /home/ec2-user/logs/mcp_server.log 2>&1 &
+echo $! > /home/ec2-user/mcp_server.pid
+
+# Verify startup (~5 seconds)
+sleep 5 && cat /home/ec2-user/logs/mcp_server.log
+```
+
+Expected log:
+```
+[FinSight MCP] Starting SSE server on port 8002
+INFO:     Started server process [XXXXX]
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8002 (Press CTRL+C to quit)
+```
+
+---
+
+### Verify from local machine (after port 8002 is open in security group)
+
+```powershell
+curl -s --max-time 5 http://13.233.21.229:8002/sse
+```
+Expected: `event: endpoint` followed by a session URI — confirms SSE handshake works.
+
+---
+
+### Connect from Claude Desktop
+
+Add to `%APPDATA%\Claude\claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "finsight": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://13.233.21.229:8002/sse"]
+    }
+  }
+}
+```
+Restart Claude Desktop. The 8 FinSight tools will appear in the tools panel.
+
+### Connect from Cursor / VS Code
+
+Add to `.cursor/mcp.json` or VS Code MCP settings:
+```json
+{
+  "mcpServers": {
+    "finsight": {
+      "url": "http://13.233.21.229:8002/sse"
+    }
+  }
+}
+```
+
+### Connect locally (stdio mode — for development only)
+
+Add to Claude Desktop config (`%APPDATA%\Claude\claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "finsight": {
+      "command": "C:/Agentic_AI/FinSight-AI/finsightaivenv/Scripts/python.exe",
+      "args": ["C:/Agentic_AI/FinSight-AI/backend/mcp_server.py"]
+    }
+  }
+}
+```
+Local config saved at `backend/claude_desktop_config.json` for reference.
+
+---
+
+### Files on Flink EC2 for MCP Server
+
+All backend files manually SCP'd from `C:\Agentic_AI\FinSight-AI\backend\` to
+`/home/ec2-user/FinSight-AI/backend/` on the Flink EC2.
+
+**Python venv**: `/home/ec2-user/FinSight-AI/mcpvenv` (Python 3.11)  
+Packages: `mcp==1.28.1`, `pyodbc`, `sqlalchemy`, `pandas`, `chromadb`, `openai`, `python-dotenv`, `yfinance`, `scipy`
+
+**ODBC Driver**: Microsoft ODBC Driver 18 for SQL Server  
+Installed via: `sudo ACCEPT_EULA=Y dnf install msodbcsql18 unixODBC-devel`
+
+**`.env` file**: `/home/ec2-user/FinSight-AI/backend/.env` — Azure SQL + ChromaDB + OpenAI credentials
+
+**Backend file layout on EC2**:
+```
+/home/ec2-user/FinSight-AI/backend/
+  mcp_server.py           ← FastMCP SSE server, 8 tools
+  config.py               ← DB settings
+  database.py             ← SQLAlchemy session
+  models.py               ← ORM models
+  services/
+    portfolio_analyzer.py ← sector allocation, performance metrics
+    risk_analytics.py     ← VaR + stress + factor computation
+    alert_engine.py       ← threshold alerts
+  rag/
+    chromadb_setup.py     ← get_chroma_client() with CHROMA_HOST env
+    query_engine.py       ← MarketRAGEngine semantic search
+```
+
+---
+
+### Update MCP server code (manual — pre-CI/CD)
+
+```powershell
+# SCP the updated file(s) from local
+scp -i C:\Agentic_AI\aws\finsight-key.pem `
+  C:\Agentic_AI\FinSight-AI\backend\mcp_server.py `
+  ec2-user@13.233.21.229:/home/ec2-user/FinSight-AI/backend/mcp_server.py
+
+# SSH in and restart
+ssh -i C:\Agentic_AI\aws\finsight-key.pem ec2-user@13.233.21.229
+kill $(cat /home/ec2-user/mcp_server.pid) 2>/dev/null
+PYTHONUNBUFFERED=1 nohup /home/ec2-user/FinSight-AI/mcpvenv/bin/python \
+  /home/ec2-user/FinSight-AI/backend/mcp_server.py \
+  --transport sse --port 8002 \
+  > /home/ec2-user/logs/mcp_server.log 2>&1 &
+echo $! > /home/ec2-user/mcp_server.pid
+```
+
+> **CI/CD note**: This manual SCP workflow will be replaced by GitHub Actions in Phase 6.
