@@ -241,15 +241,38 @@
 |---|---|---|
 | 1 — Data Modeling | ✅ Complete | Manual SQL scripts, no Alembic |
 | 2 — Backend API | ✅ Complete | 18+ endpoints, full analytics |
-| 3 — AI/LLM | ✅ Complete | GPT-4o, RAG, 4 AI endpoints, agentic chat (3.4a done, 3.4b pending) |
+| 3 — AI/LLM | ✅ Complete | GPT-4o, RAG, agentic chat (3.4a), FastMCP server (3.4b) |
 | 4 — Frontend | ✅ Complete | All 3 tasks done (4.1, 4.2, 4.3) |
-| 5 — Advanced | 🔄 In Progress | 5.1 ✅ 5.2 ✅ (threshold) 5.3 ✅ · pending: 5.2 event/AI alerts, report gen |
-| 6 — Infrastructure | ⏳ Pending | Redis (6.2) for caching + multi-worker WS scaling |
+| 5 — Advanced | 🔄 In Progress | 5.1 ✅ 5.2 ✅ (threshold) 5.3 ✅ · pending: 5.2 event/AI alerts |
+| 6 — Infrastructure | ⏳ Pending | CI/CD, Redis caching, JWT auth — not started |
 
-**Current Focus**: Phase 5 in progress + Task 3.4b complete. Tasks 5.1, 5.2 (threshold alerts), 5.3, 3.4b (FastMCP) all done. AWS ChromaDB fully loaded (36K+ docs). Pending: 5.2 event/AI alerts, JWT auth, Phase 6.
+**Current Focus**: Phase 5 + 3.4b done. Pending: 5.2 event/AI alerts, JWT auth, Phase 6.
 
 **Known Runtime Issues**:
-- ChromaDB container not running → `search_market_context` tool returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)
+- ChromaDB container not running locally → `search_market_context` returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)
+
+---
+
+### Where Everything Lives (Deployment Map)
+
+> Goal: everything eventually moves off local via CI/CD (Phase 6). Until then, this table shows current state.
+
+| Component | Where | Status | Notes |
+|---|---|---|---|
+| **Azure SQL Server** | Azure cloud (free tier) | ✅ Live | FinSight_AI DB — 50 portfolios, 135 securities, full data. Auto-pauses after 1hr inactivity (~1min cold start) |
+| **AWS ChromaDB EC2** | EC2 `13.206.225.80` (t3.micro) | ✅ Live | 36,595 docs across 10 collections. Flink writes to it live. |
+| **AWS Flink EC2** | EC2 `13.233.21.229` (t3.medium) | ✅ Live | Kafka + Flink + Finnhub producer. EventBridge triggers daily risk job at 17:30 ET Mon–Fri. |
+| **Vercel (Frontend)** | Vercel cloud | ✅ Live | `https://frontend-sandy-seven-21.vercel.app` — deployed from git |
+| **FastAPI Backend** | Local only | ⚠️ Local | `http://localhost:8000` — needs EC2/cloud deployment via CI/CD |
+| **MCP Server** | Local only (stdio) | ⚠️ Local | `backend/mcp_server.py` — in git, works locally. SSE/hosted deployment pending CI/CD. To ship to customers: deploy to Flink EC2 with `--transport sse --port 8002` |
+| **Local ChromaDB** | Local only (Docker) | ⚠️ Local | `localhost:8001` — separate from AWS ChromaDB. Used in local dev only. |
+| **Local Next.js** | Local only | ⚠️ Local | `http://localhost:3000` — Vercel is the production frontend |
+
+**What still needs to move off local (Phase 6 scope):**
+- FastAPI backend → EC2 or ECS (behind ALB + HTTPS)
+- MCP server → Flink EC2 in SSE mode (once backend is hosted)
+- Local ChromaDB → redundant once AWS ChromaDB is the source of truth
+- CI/CD pipeline → GitHub Actions: push to `main` → deploy backend + restart services
 
 ---
 
