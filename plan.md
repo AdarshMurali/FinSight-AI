@@ -943,8 +943,9 @@ These were identified as gaps that add resume value or practical robustness. Rev
 | **Langfuse (LLM tracing)** | High | Free tier. Tracks every GPT-4o call — tokens, latency, tool calls, cost. 20-minute add. Strong resume signal for LLM engineering maturity. |
 | **Rate limiting** (`slowapi`) | Medium | One-liner FastAPI middleware. Prevents API abuse on public demo. |
 | **Prometheus + Grafana** | Medium | Observability story for resume. Both free/open-source, can run on EC2. Shows production-readiness mindset. |
-| **ChromaDB static collections on AWS** | Medium | `macro_indicators`, `earnings_filings`, `fed_communications` only exist locally. Options: re-run loader pointing at AWS host, or rsync collection folders + merge sqlite metadata (fragile). |
+| **ChromaDB static collections on AWS** | ✅ Done | All 8 static collections loaded to AWS ChromaDB (2026-07-06): ohlcv_data (7,991), dividends_data (2,226), earnings_data (400), analyst_recs (100), macro_indicators (3,498), fed_communications (729), earnings_filings (17,200), splits_data (24). Total ~36K docs. |
 | **ChromaDB data retention job** | Low | See Task 5.2b. Only needed once `market_news` exceeds ~50K docs or disk > 2GB. |
+| **Reddit Sentiment Pipeline** | Good to Have | Live Flink stream from r/wallstreetbets, r/investing, r/stocks via PRAW. Adds retail sentiment signal distinct from institutional data. No viable 5-year historical — live stream only (similar to market_news pipeline). Implement only if a live sentiment signal adds demo value. |
 | **BigQuery Analytics Layer** | Medium | Free forever (1 TB queries/month, 10 GB storage). See Task 7.1 below for full integration plan. Strong resume signal — classic OLTP (Azure SQL) + OLAP (BigQuery) architecture. |
 
 ---
@@ -1140,5 +1141,5 @@ load_secrets("finsight/prod")  # call before app init
 ---
 
 **Created**: 2026-06-14
-**Last Updated**: 2026-07-03
-**Status**: Phase 5 in progress — Tasks 5.1, 5.2 (threshold alerts), 5.3 complete. Pending: 5.2 event alerts + AI alerts.
+**Last Updated**: 2026-07-06
+**Status**: Tasks 5.1, 5.2, 5.3, 3.4b (FastMCP) complete. AWS ChromaDB fully loaded (36K+ docs). Pending: 5.2 event/AI alerts, JWT auth, Phase 6.

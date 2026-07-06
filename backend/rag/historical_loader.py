@@ -96,8 +96,19 @@ def load_ohlcv_data(tickers: list[str], collection, years: int = 5):
             print(f"  Error loading {ticker}: {e}")
 
     if docs:
-        embeddings = embed_texts(docs)
-        collection.add(documents=docs, embeddings=embeddings, metadatas=metadatas, ids=ids)
+        # Deduplicate by ID (guards against duplicate tickers in caller list)
+        seen: dict[str, tuple] = {}
+        for d, m, i in zip(docs, metadatas, ids):
+            if i not in seen:
+                seen[i] = (d, m)
+        docs      = [v[0] for v in seen.values()]
+        metadatas = [v[1] for v in seen.values()]
+        ids       = list(seen.keys())
+        batch_size = 500
+        for i in range(0, len(docs), batch_size):
+            embeddings = embed_texts(docs[i:i+batch_size])
+            collection.upsert(documents=docs[i:i+batch_size], embeddings=embeddings,
+                              metadatas=metadatas[i:i+batch_size], ids=ids[i:i+batch_size])
         print(f"Loaded {len(docs)} total OHLCV records to ChromaDB")
 
 
@@ -150,8 +161,18 @@ def load_dividends_data(tickers: list[str], collection, years: int = 5):
             print(f"  Error loading dividends for {ticker}: {e}")
 
     if docs:
-        embeddings = embed_texts(docs)
-        collection.add(documents=docs, embeddings=embeddings, metadatas=metadatas, ids=ids)
+        seen: dict[str, tuple] = {}
+        for d, m, i in zip(docs, metadatas, ids):
+            if i not in seen:
+                seen[i] = (d, m)
+        docs      = [v[0] for v in seen.values()]
+        metadatas = [v[1] for v in seen.values()]
+        ids       = list(seen.keys())
+        batch_size = 500
+        for i in range(0, len(docs), batch_size):
+            embeddings = embed_texts(docs[i:i+batch_size])
+            collection.upsert(documents=docs[i:i+batch_size], embeddings=embeddings,
+                              metadatas=metadatas[i:i+batch_size], ids=ids[i:i+batch_size])
         print(f"Loaded {len(docs)} total dividend records to ChromaDB")
 
 
@@ -204,8 +225,18 @@ def load_splits_data(tickers: list[str], collection, years: int = 5):
             print(f"  Error loading splits for {ticker}: {e}")
 
     if docs:
-        embeddings = embed_texts(docs)
-        collection.add(documents=docs, embeddings=embeddings, metadatas=metadatas, ids=ids)
+        seen: dict[str, tuple] = {}
+        for d, m, i in zip(docs, metadatas, ids):
+            if i not in seen:
+                seen[i] = (d, m)
+        docs      = [v[0] for v in seen.values()]
+        metadatas = [v[1] for v in seen.values()]
+        ids       = list(seen.keys())
+        batch_size = 500
+        for i in range(0, len(docs), batch_size):
+            embeddings = embed_texts(docs[i:i+batch_size])
+            collection.upsert(documents=docs[i:i+batch_size], embeddings=embeddings,
+                              metadatas=metadatas[i:i+batch_size], ids=ids[i:i+batch_size])
         print(f"Loaded {len(docs)} total split records to ChromaDB")
 
 
@@ -281,8 +312,18 @@ def load_earnings_data(tickers: list[str], collection, years: int = 5):
             print(f"  Error loading earnings for {ticker}: {e}")
 
     if docs:
-        embeddings = embed_texts(docs)
-        collection.add(documents=docs, embeddings=embeddings, metadatas=metadatas, ids=ids)
+        seen: dict[str, tuple] = {}
+        for d, m, i in zip(docs, metadatas, ids):
+            if i not in seen:
+                seen[i] = (d, m)
+        docs      = [v[0] for v in seen.values()]
+        metadatas = [v[1] for v in seen.values()]
+        ids       = list(seen.keys())
+        batch_size = 500
+        for i in range(0, len(docs), batch_size):
+            embeddings = embed_texts(docs[i:i+batch_size])
+            collection.upsert(documents=docs[i:i+batch_size], embeddings=embeddings,
+                              metadatas=metadatas[i:i+batch_size], ids=ids[i:i+batch_size])
         print(f"Loaded {len(docs)} total earnings records to ChromaDB")
 
 
@@ -347,8 +388,18 @@ def load_analyst_recommendations(tickers: list[str], collection):
             print(f"  Error loading analyst recommendations for {ticker}: {e}")
 
     if docs:
-        embeddings = embed_texts(docs)
-        collection.add(documents=docs, embeddings=embeddings, metadatas=metadatas, ids=ids)
+        seen: dict[str, tuple] = {}
+        for d, m, i in zip(docs, metadatas, ids):
+            if i not in seen:
+                seen[i] = (d, m)
+        docs      = [v[0] for v in seen.values()]
+        metadatas = [v[1] for v in seen.values()]
+        ids       = list(seen.keys())
+        batch_size = 500
+        for i in range(0, len(docs), batch_size):
+            embeddings = embed_texts(docs[i:i+batch_size])
+            collection.upsert(documents=docs[i:i+batch_size], embeddings=embeddings,
+                              metadatas=metadatas[i:i+batch_size], ids=ids[i:i+batch_size])
         print(f"Loaded {len(docs)} total analyst recommendation records to ChromaDB")
 
 
@@ -419,8 +470,18 @@ def load_company_news(tickers: list[str], collection):
             print(f"  Error loading news for {ticker}: {e}")
 
     if docs:
-        embeddings = embed_texts(docs)
-        collection.add(documents=docs, embeddings=embeddings, metadatas=metadatas, ids=ids)
+        seen: dict[str, tuple] = {}
+        for d, m, i in zip(docs, metadatas, ids):
+            if i not in seen:
+                seen[i] = (d, m)
+        docs      = [v[0] for v in seen.values()]
+        metadatas = [v[1] for v in seen.values()]
+        ids       = list(seen.keys())
+        batch_size = 500
+        for i in range(0, len(docs), batch_size):
+            embeddings = embed_texts(docs[i:i+batch_size])
+            collection.upsert(documents=docs[i:i+batch_size], embeddings=embeddings,
+                              metadatas=metadatas[i:i+batch_size], ids=ids[i:i+batch_size])
         print(f"Loaded {len(docs)} total news articles to ChromaDB")
 
 

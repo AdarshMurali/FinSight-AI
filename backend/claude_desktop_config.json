@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "finsight": {
+      "command": "C:/Agentic_AI/FinSight-AI/finsightaivenv/Scripts/python.exe",
+      "args": ["C:/Agentic_AI/FinSight-AI/backend/mcp_server.py"]
+    }
+  }
+}

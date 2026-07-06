@@ -1,5 +1,5 @@
 ## Project Status — FinSight AI
-**Last Updated**: 2026-07-03 (Phase 5 tasks 5.1, 5.2, 5.3 complete)
+**Last Updated**: 2026-07-06 (AWS ChromaDB fully loaded — 36K+ docs across all collections)
 
 ---
 
@@ -57,13 +57,25 @@
   - `ai_recommendation_engine.py` → POST /api/analysis/ai/recommendations
   - All combine: PortfolioAnalyzer data + ChromaDB RAG context + GPT-4o
 
-- ✅ Task 3.3: RAG System with ChromaDB — 24,072+ documents across 10 collections
+- ✅ Task 3.3: RAG System with ChromaDB — fully loaded on both local and AWS
   - ChromaDB running at localhost:8001 (Docker container `FinSight_AI_chromadb`)
-  - Collections: ohlcv_data, macro_indicators, sec_filings, market_news, earnings_data,
-    analyst_research, technical_indicators, dividend_data, splits_data, volatility_events
-  - Batch loaders: `historical_loader.py` (yfinance, FRED), `analyst_research_loader.py`
-  - Live pipeline: `finnhub_news_producer.py` → Kafka → Flink → ChromaDB (polls every 2 min)
-  - RAG query engine: `backend/rag/query_engine.py` (searches all 10 collections, returns ranked results)
+  - Live pipeline: `finnhub_news_producer.py` → Kafka → Flink → ChromaDB (polls every 2 min, ~50–150 unique articles/day)
+  - RAG query engine: `backend/rag/query_engine.py` (searches all collections, returns ranked results)
+  - **Local ChromaDB**: ~24K docs (one-time historical bulk load)
+  - **AWS ChromaDB (13.206.225.80)**: ✅ Fully loaded as of 2026-07-06 — 36,595 docs total
+    | Collection | Docs | Source |
+    |---|---|---|
+    | earnings_filings | 17,200 | SEC EDGAR (5yr) |
+    | ohlcv_data | 7,991 | yfinance monthly (5yr, 131 tickers) |
+    | market_news | ~3,800 | Flink live stream |
+    | volatility_events | ~3,400 | Flink live stream |
+    | macro_indicators | 3,498 | FRED (40+ series, 2019–present) |
+    | dividends_data | 2,226 | yfinance (5yr) |
+    | fed_communications | 729 | FRED Fed balance sheet + rates |
+    | earnings_data | 400 | yfinance quarterly |
+    | analyst_recommendations | 100 | yfinance consensus |
+    | splits_data | 24 | yfinance (5yr) |
+  - **Reddit sentiment**: good-to-have, live stream only via PRAW (no historical), not yet implemented
   - Additional APIs: FRED (macroeconomic data), AlphaVantage, Finnhub
 
 - ✅ Task 3.4a: Agentic AI Chat (OpenAI Function Calling) — COMPLETED (2026-06-25)
@@ -92,7 +104,12 @@
   - **Styling**: headings → orange (`#F5821F`), bold → white, code → dark bg with orange text; matches terminal aesthetic
   - **Files changed**: `frontend/app/chat/page.tsx` (import + Bubble component), `frontend/package.json` (+`react-markdown`, `remark-gfm`)
 
-- ⏸️ Task 3.4b: FastMCP Server — PENDING (expose FinSight as standards-compliant MCP server for Claude Desktop / Cursor)
+- ✅ Task 3.4b: FastMCP Server — COMPLETED (2026-07-06)
+  - `backend/mcp_server.py` — FastMCP server with 8 tools wired to live SQL Server + ChromaDB
+  - **8 tools**: `list_portfolios`, `get_portfolio_summary`, `get_portfolio_positions`, `get_portfolio_risk`, `get_portfolio_alerts`, `search_market_context`, `get_market_events`, `refresh_portfolio_risk`
+  - Two transport modes: `stdio` (Claude Desktop), `--transport sse --port 8002` (HTTP/Cursor)
+  - `backend/claude_desktop_config.json` — ready-to-use config; deployed to `%APPDATA%\Claude\claude_desktop_config.json`
+  - Restart Claude Desktop to activate; FinSight tools appear in Claude's tool panel
 
 ---
 
@@ -229,7 +246,7 @@
 | 5 — Advanced | 🔄 In Progress | 5.1 ✅ 5.2 ✅ (threshold) 5.3 ✅ · pending: 5.2 event/AI alerts, report gen |
 | 6 — Infrastructure | ⏳ Pending | Redis (6.2) for caching + multi-worker WS scaling |
 
-**Current Focus**: Phase 5 in progress. Tasks 5.1 (VaR/stress/factor), 5.2 (threshold alerts), 5.3 (VaR trend chart) complete. Pending: 5.2 event alerts + AI-generated alerts, Task 3.4b (FastMCP Server), Phase 6.
+**Current Focus**: Phase 5 in progress + Task 3.4b complete. Tasks 5.1, 5.2 (threshold alerts), 5.3, 3.4b (FastMCP) all done. AWS ChromaDB fully loaded (36K+ docs). Pending: 5.2 event/AI alerts, JWT auth, Phase 6.
 
 **Known Runtime Issues**:
 - ChromaDB container not running → `search_market_context` tool returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)
