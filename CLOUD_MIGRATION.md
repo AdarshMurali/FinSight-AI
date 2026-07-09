@@ -57,6 +57,8 @@ FastAPI backend and its 2026-07-07 AI chat fixes are now live on EC2 (see "Alrea
 
 **Verified end-to-end**: `/health`, `/docs`, `/api/portfolios` (real data) all working over HTTPS; systemd crash-recovery tested (kill + auto-restart); Certbot cert valid + renewal timer active; frontend confirmed calling the new backend domain via live network inspection (not stale localhost/ngrok config) — WS shows `CONNECTED` in the UI.
 
+**Frontend auto-deploy fixed (2026-07-09, later same day)**: discovered the Vercel project had never actually been Git-connected — it was originally deployed via CLI, which is why `git push` did nothing and dashboard "Redeploy" just rebuilt stale commits (two hardcoded `"API localhost:8000"`-style display bugs went unnoticed through two redeploys because of this). Root cause: the "Vercel" GitHub App wasn't authorized on this private repo — fixed at `github.com/settings/installations`, then `vercel git connect` succeeded. Two project settings needed manual correction via `vercel api` (no CLI flag exists for either): `rootDirectory: "frontend"` (monorepo — without this, a git-triggered build tries to build from the repo root and fails) and confirmed `link.productionBranch: "adarsh"` (Vercel auto-detected this correctly on connect, no action needed). Verified with a real empty-commit push that auto-triggered a deployment reaching `readyState: READY`, `target: production`. Every push to `adarsh` now deploys automatically.
+
 ---
 
 ## Explored and Rejected: Lambda for `price_update_job.py`
@@ -84,5 +86,4 @@ Built a full Lambda container-image pipeline for this job (Dockerfile with msodb
 
 ## Resume Steps for Next Session
 1. Confirm `finsight-daily-price-update`'s first real automated fire succeeded (16:00 ET) — check `/var/log/finsight_price_update.log` on the EC2 and/or `Securities.current_price` timestamps.
-2. Confirm the frontend footer-label fix (commit `83a860f`) made it live — it needs a manual "Redeploy" in Vercel since pushes to the `adarsh` branch aren't auto-deploying (production branch is likely `main`; worth checking Vercel's Git settings if this should change).
-3. Task 5.2 event/AI alerts, Task 6.4 (JWT auth/multi-tenant access), rest of Phase 6 (Redis, Dockerization, real CI/CD) — see `plan.md`.
+2. Task 5.2 event/AI alerts, Task 6.4 (JWT auth/multi-tenant access), rest of Phase 6 (Redis, Dockerization, real CI/CD for the backend — frontend now auto-deploys, backend still manual) — see `plan.md`.
