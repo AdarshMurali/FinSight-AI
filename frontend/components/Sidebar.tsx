@@ -162,7 +162,9 @@ export default function Sidebar() {
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#00CC44] animate-pulse shrink-0" />
             <span className="text-[#00CC44] text-[9px] font-bold tracking-[0.15em]">LIVE</span>
-            <span className="text-[9px] ml-auto" style={{ color: "#6A4828" }}>:8000</span>
+            <span className="text-[9px] ml-auto" style={{ color: "#6A4828" }}>
+              {(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/^https?:\/\//, "")}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-[9px] tracking-wider" style={{ color: "#6A4828" }}>RAG</span>
