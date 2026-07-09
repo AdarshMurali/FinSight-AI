@@ -869,22 +869,21 @@ The history is being silently built up and not yet used. This task surfaces that
 
 ---
 
-#### Task 6.3: Deployment & CI/CD
+#### Task 6.3: Deployment & CI/CD — PARTIALLY COMPLETE (backend cloud deploy done 2026-07-09)
 **Goal**: Production-ready deployment
 
-**Steps**:
-1. Set up cloud infrastructure (AWS/GCP/Azure)
-2. Configure managed SQL Server (Azure SQL/RDS)
-3. Set up CI/CD pipeline (GitHub Actions)
-4. Implement health checks and monitoring
-5. Configure logging (ELK stack or CloudWatch)
-6. Set up secrets management (AWS Secrets Manager)
+**What's done**:
+1. ✅ Cloud infrastructure — FastAPI backend deployed to the existing ChromaDB EC2 (`13.206.225.80`), reused rather than a new box ($0 extra cost). Domain `fin-sightai.space` (GoDaddy) — `api.fin-sightai.space` (backend), `www.fin-sightai.space` (frontend, Vercel). `nginx` + Certbot for HTTPS, `systemd` for process management/auto-restart. Full writeup: `CLOUD_MIGRATION.md`.
+2. ✅ Managed SQL Server — already on Azure SQL since Phase 1.
+3. ⏳ CI/CD pipeline (GitHub Actions) — still manual (`git pull` + `systemctl restart` over SSH/SSM). Not started.
+4. ⏳ Health checks and monitoring — `/health` endpoint exists, no external monitoring/alerting wired up yet.
+5. ⏳ Logging — plain file logs (`journalctl`/log files on EC2), no ELK/CloudWatch aggregation.
+6. ⏳ Secrets management — `.env` files on disk, not AWS Secrets Manager (see Phase 7 Task 7.2 below).
 
-**Deliverables**:
-- Cloud infrastructure code (Terraform/CloudFormation)
-- CI/CD pipelines
+**Remaining Deliverables**:
+- CI/CD pipeline (GitHub Actions)
 - Monitoring dashboards
-- Deployment documentation
+- Secrets management
 
 ---
 
@@ -1211,5 +1210,5 @@ load_secrets("finsight/prod")  # call before app init
 ---
 
 **Created**: 2026-06-14
-**Last Updated**: 2026-07-08
-**Status**: Tasks 5.1, 5.2, 5.3, 3.4b (FastMCP + hosted on AWS EC2) complete. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08) — see `CLOUD_MIGRATION.md`. Task 6.4 (JWT + multi-tenant access) scoped, not started. Pending: 5.2 event/AI alerts, Phase 6 (JWT auth, Redis, CI/CD).
+**Last Updated**: 2026-07-09
+**Status**: Tasks 5.1, 5.2, 5.3, 3.4b (FastMCP + hosted on AWS EC2) complete. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend now live at `https://www.fin-sightai.space`. Task 6.4 (JWT + multi-tenant access) scoped, not started. Pending: 5.2 event/AI alerts, real CI/CD, Redis caching, Dockerization, JWT auth.

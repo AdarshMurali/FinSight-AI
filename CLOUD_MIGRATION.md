@@ -16,7 +16,8 @@
 | `risk_job.py` (daily risk computation) | Same Flink EC2, via EventBridge → SSM | `/home/ec2-user/FinSight-AI/backend/scripts/risk_job.py` | Live, fixed 2026-07-07 | Runs Mon–Fri 16:10 ET. Was silently 100% failing since creation (wrong path) until fixed this session. |
 | `price_update_job.py` (daily price refresh) | Same Flink EC2, via EventBridge → SSM (`finsight-daily-price-update`) | `/home/ec2-user/FinSight-AI/backend/scripts/price_update_job.py` | Live, deployed 2026-07-08 | Runs Mon–Fri 16:00 ET, 10 min before `risk_job.py`. Verified via manual SSM trigger before relying on the schedule (lesson from `risk_job.py`'s silent failure — see [[eventbridge-risk-job]]). |
 | MCP Server | Same Flink EC2 (SSE transport) | `http://13.233.21.229:8002/sse` | Live | |
-| Frontend | Vercel | `https://frontend-sandy-seven-21.vercel.app` | Live | Deployed from git |
+| Frontend | Vercel | `https://www.fin-sightai.space` (also `https://frontend-sandy-seven-21.vercel.app`) | Live | Deployed from git; custom domain added 2026-07-09 |
+| FastAPI backend | Same EC2 as ChromaDB (`13.206.225.80`), reused for $0 extra cost | `https://api.fin-sightai.space` | Live | Deployed 2026-07-09 — see below |
 
 **AWS account note**: this infra lives in account `301276846405` (alias `aws-adarsh-lavanya`), not the local CLI's default profile — use `--profile lavanya`. See `aws_deployment.md` memory for full detail.
 
@@ -26,11 +27,35 @@
 
 | Component | Current State | Blocking on | Priority |
 |---|---|---|---|
-| FastAPI backend (`main.py` + all routers/services) | Runs only on `localhost:8000` | Phase 6 Task 6.3 (CI/CD + cloud deploy) — not started | High — this is the main app, everything else is scaffolding around it |
-| AI chat fixes (`ai_chat_service.py`, `ai_tools.py`, `query_engine.py`) — 2026-07-07 Bug 1 fixes | Verified locally only, via local backend hitting AWS ChromaDB/Azure SQL | Same as above — ships once the backend itself is deployed | Tied to backend deploy above |
 | Next.js frontend (dev copy) | Runs on `localhost:3000` | N/A — Vercel is already production; local copy is dev-only | Low, not blocking |
 
-`models.py` (`Security.current_price` added 2026-07-07) is now on EC2 too, pushed alongside `price_update_job.py` — but NOT yet in the local FastAPI backend's deployed environment, since that backend isn't deployed anywhere (see row above).
+FastAPI backend and its 2026-07-07 AI chat fixes are now live on EC2 (see "Already on Cloud" above) — no longer pending.
+
+## Backend Cloud Deployment — Domain, Infra, Full Writeup (2026-07-09)
+
+**Domain**: `fin-sightai.space`, registered via GoDaddy (1-year, UPI one-time payment, auto-renew off, 2FA + transfer lock enabled on the GoDaddy account). DNS hosted at GoDaddy (not Route53 — AWS credits explicitly exclude domain registration fees, and Route53 hosted-zone hosting wasn't worth the $0.50/mo when GoDaddy's own DNS manager is free).
+- `api.fin-sightai.space` → `A` record → `13.206.225.80` (backend)
+- `fin-sightai.space` → `A` record → `216.198.79.1` (Vercel), 308-redirects to `www`
+- `www.fin-sightai.space` → `CNAME` → Vercel DNS target (frontend, canonical URL)
+
+**Backend host**: reused the existing always-on ChromaDB EC2 (`13.206.225.80`, Amazon Linux 2023, t3.micro-class, 912MB RAM) instead of a new box — $0 marginal cost. Runs alongside the ChromaDB Docker container; ~180MB RAM for the backend process, leaves headroom that's fine for demo/interview traffic but worth watching if traffic grows (would need a t3.small resize if so).
+
+**Setup performed**:
+- `git sparse-checkout` clone (backend/ only, not the full repo — frontend/docs/aws stay off the production box) via a dedicated read-only GitHub Deploy Key (not a personal token)
+- `python3.11` + venv (`backendvenv`) — numpy 2.1 requires 3.10+, box's default python3.9 wasn't enough
+- Microsoft ODBC Driver 18 for SQL Server (`msodbcsql18` + `unixODBC-devel` via `dnf`, after adding Microsoft's RHEL9 repo) — Driver 17 (the app's config default) isn't available on AL2023, had to set `DB_ODBC_DRIVER=ODBC Driver 18 for SQL Server` in the EC2's `.env` to override
+- Trimmed `requirements.txt` install: skipped `apache-flink`/`apache-beam` (~350MB, unused by the FastAPI app — only the separate Flink job scripts need it) and `confluent-kafka`/`celery` (unused). Added missing `scipy` (used by `risk_analytics.py`, was never in `requirements.txt` at all — same gap the MCP server venv had silently worked around)
+- `systemd` service `finsight-backend.service` (not the `nohup`+pid pattern used for the MCP server — deliberate, this is the primary always-on surface and needs auto-restart on crash/reboot)
+- `nginx` reverse proxy (127.0.0.1:8000 → public) + Certbot for the HTTPS cert. AL2023's `certbot` package does **not** ship a renewal timer/cron despite Certbot's own success message claiming it does — had to hand-roll `certbot-renew.service` + `.timer` (twice daily)
+- Security group: opened 80/443 on the ChromaDB EC2's SG; SSH (22) re-allowed after discovering the old allow-listed home IP was stale (dynamic IP had changed)
+
+**Code fixes made alongside deployment** (see git log on `adarsh` branch):
+- `backend/main.py` — startup had no DB retry; ported the `wait_for_db()` cold-start-retry pattern from `risk_job.py` (Azure SQL auto-pause takes 20-40s to wake)
+- `backend/routers/ws.py` — Kafka consumer hardcoded `bootstrap_servers="localhost:9092"`, breaks now that Kafka (Flink EC2) and the backend (ChromaDB EC2) are different boxes; now reads `KAFKA_BOOTSTRAP_SERVERS` env var like the Flink side already did. Only affects the live news-toast WebSocket feature — Kafka is market-hours-only anyway (Flink EC2 schedule), so this degrades gracefully outside those hours by design
+- `backend/requirements.txt` — added missing `scipy`
+- `frontend/app/page.tsx` — system-status footer strip had a hardcoded `"API localhost:8000"` label; now reads `NEXT_PUBLIC_API_URL` (cosmetic only, actual API calls were already correct)
+
+**Verified end-to-end**: `/health`, `/docs`, `/api/portfolios` (real data) all working over HTTPS; systemd crash-recovery tested (kill + auto-restart); Certbot cert valid + renewal timer active; frontend confirmed calling the new backend domain via live network inspection (not stale localhost/ngrok config) — WS shows `CONNECTED` in the UI.
 
 ---
 
@@ -53,11 +78,11 @@ Built a full Lambda container-image pipeline for this job (Dockerfile with msodb
 ## Session Log
 - **2026-07-07**: Fixed `risk_job.py`'s EventBridge schedule (was pointing at a stale, out-of-sync code copy — 100% failure rate since creation on 6/27, never noticed because manual test runs during setup were mistaken for successful automated runs). Consolidated to one code copy on the Flink EC2. Fixed two AI-chat data-staleness bugs (date injection, live quote tool, recency-aware RAG ranking) — local only, not yet deployed. Built and verified `price_update_job.py` locally — not yet pushed to EC2 or scheduled.
 - **2026-07-08**: Confirmed `risk_job.py`'s automated run fired correctly overnight for the first time ever. Explored moving `price_update_job.py` to Lambda (full container-image pipeline built, hit Azure SQL firewall/static-IP blocker, decided against it — see "Explored and Rejected" above). Deployed `price_update_job.py` + updated `models.py` to the Flink EC2, created `finsight-daily-price-update` EventBridge schedule (16:00 ET, before `risk_job.py`), verified via manual SSM trigger before trusting the schedule.
-- **2026-07-09**: Deleted the unused Lambda/ECR/IAM artifacts from the rejected Lambda attempt (confirmed gone via AWS CLI).
+- **2026-07-09**: Deleted the unused Lambda/ECR/IAM artifacts from the rejected Lambda attempt (confirmed gone via AWS CLI). Pushed the FastAPI backend to the cloud (reused ChromaDB EC2), registered `fin-sightai.space` domain, wired up nginx+HTTPS, connected Vercel frontend to both the new backend and the custom domain — full writeup above. This was the last major "still local" item from Phase 6 Task 6.3.
 
 ---
 
 ## Resume Steps for Next Session
 1. Confirm `finsight-daily-price-update`'s first real automated fire succeeded (16:00 ET) — check `/var/log/finsight_price_update.log` on the EC2 and/or `Securities.current_price` timestamps.
-2. Push the FastAPI backend itself to the cloud (Phase 6 Task 6.3) — this is the biggest remaining "still local" item; the 2026-07-07 AI chat fixes and `models.py` change only take effect once this ships.
-3. Continue with remaining pending items per `plan.md` (Phase 6, JWT auth/multi-tenant access, etc.).
+2. Confirm the frontend footer-label fix (commit `83a860f`) made it live — it needs a manual "Redeploy" in Vercel since pushes to the `adarsh` branch aren't auto-deploying (production branch is likely `main`; worth checking Vercel's Git settings if this should change).
+3. Task 5.2 event/AI alerts, Task 6.4 (JWT auth/multi-tenant access), rest of Phase 6 (Redis, Dockerization, real CI/CD) — see `plan.md`.

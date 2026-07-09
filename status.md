@@ -1,5 +1,5 @@
 ## Project Status — FinSight AI
-**Last Updated**: 2026-07-08 (`risk_job.py` confirmed firing correctly on its own for the first time ever; `price_update_job.py` now live on AWS via EventBridge→SSM after a Lambda attempt was explored and rejected — see `CLOUD_MIGRATION.md`)
+**Last Updated**: 2026-07-09 (FastAPI backend pushed to the cloud — reused the ChromaDB EC2, registered `fin-sightai.space` domain, nginx+HTTPS via Certbot, Vercel frontend now live at `https://www.fin-sightai.space` pointing at the new backend — see `CLOUD_MIGRATION.md` for the full writeup)
 
 ---
 
@@ -206,12 +206,18 @@
 
 ---
 
-### Phase 6: Infrastructure & Deployment — PENDING
+### Phase 6: Infrastructure & Deployment — IN PROGRESS
 - ⏳ Task 6.1: Dockerization (full docker-compose for all services)
 - ⏳ Task 6.2: Redis Caching (portfolio cache, AI response cache)
   - Note: Task 4.2 was implemented without Redis using in-process asyncio.
     Redis in Phase 6 is for HTTP response caching + enabling multi-worker WebSocket scaling.
-- ⏳ Task 6.3: CI/CD + Cloud Deployment
+- ✅ Task 6.3 (partial — cloud deploy done, CI/CD still manual): FastAPI backend deployed 2026-07-09
+  - Reused the always-on ChromaDB EC2 (`13.206.225.80`) — $0 extra EC2 cost
+  - Domain: `fin-sightai.space` (GoDaddy), `api.fin-sightai.space` → backend, `www.fin-sightai.space` → Vercel frontend
+  - `nginx` reverse proxy + Certbot (Let's Encrypt, auto-renewing via a hand-rolled systemd timer — AL2023's certbot package doesn't ship one despite claiming to)
+  - `systemd` service (`finsight-backend.service`) — auto-restart on crash/reboot, unlike the `nohup` pattern used for the MCP server
+  - Deploy method: `git sparse-checkout` (backend/ only) via a read-only GitHub Deploy Key, manual `git pull` + `systemctl restart` for updates — real CI/CD (GitHub Actions) still not built
+  - Full writeup, all bugs found/fixed, and verification steps: see `CLOUD_MIGRATION.md`
 
 ---
 
@@ -244,9 +250,9 @@
 | 3 — AI/LLM | ✅ Complete | GPT-4o, RAG, agentic chat (3.4a), FastMCP server (3.4b) |
 | 4 — Frontend | ✅ Complete | All 3 tasks done (4.1, 4.2, 4.3) |
 | 5 — Advanced | 🔄 In Progress | 5.1 ✅ 5.2 ✅ (threshold) 5.3 ✅ · pending: 5.2 event/AI alerts |
-| 6 — Infrastructure | ⏳ Pending | CI/CD, Redis caching, JWT auth — not started |
+| 6 — Infrastructure | 🔄 In Progress | Backend cloud deploy ✅ (6.3 partial) · Redis, Dockerization, real CI/CD, JWT auth still pending |
 
-**Current Focus**: Phase 5 + 3.4b done. Both 2026-07-06 data-staleness bugs fixed and verified (2026-07-07). Both daily EC2 batch jobs (`risk_job.py` 16:10 ET, `price_update_job.py` 16:00 ET) now live and verified on AWS (2026-07-08) — see `CLOUD_MIGRATION.md` for the full local-vs-cloud tracker. Next: decide on cleanup of unused Lambda/ECR artifacts, then push the FastAPI backend itself to the cloud (Phase 6 Task 6.3). Pending: 5.2 event/AI alerts, JWT auth (Task 6.4), rest of Phase 6.
+**Current Focus**: FastAPI backend is now live on AWS at `https://api.fin-sightai.space`, and the Vercel frontend (`https://www.fin-sightai.space`) points at it — the biggest remaining "still local" item from `CLOUD_MIGRATION.md` is done. All 5 daily/always-on cloud pieces (Azure SQL, ChromaDB EC2, Flink/Kafka EC2, backend, frontend) are live; only the Flink EC2 is market-hours-only by design. Next: confirm the frontend footer-label fix (commit `83a860f`) went live via a manual Vercel redeploy, then move to remaining Phase 5/6 items — 5.2 event/AI alerts, JWT auth (Task 6.4), real CI/CD, Redis caching.
 
 **Known Runtime Issues**:
 - ChromaDB container not running locally → `search_market_context` returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)
