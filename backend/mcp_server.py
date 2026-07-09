@@ -426,8 +426,12 @@ if __name__ == "__main__":
 
     if args.transport == "sse":
         print(f"[FinSight MCP] Starting SSE server on port {args.port}", flush=True)
+        from mcp.server.fastmcp.server import TransportSecuritySettings
         mcp.settings.host = "0.0.0.0"
         mcp.settings.port = args.port
+        mcp.settings.transport_security = TransportSecuritySettings(
+            enable_dns_rebinding_protection=False,
+        )
         mcp.run(transport="sse")
     else:
         mcp.run(transport="stdio")

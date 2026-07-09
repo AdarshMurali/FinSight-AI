@@ -48,6 +48,7 @@ class Security(Base):
     country = Column(String(100))
     exchange = Column(String(100))
     currency = Column(String(10))
+    current_price = Column(DECIMAL(18, 4))
 
     positions = relationship("Position", back_populates="security")
     transactions = relationship("Transaction", back_populates="security")

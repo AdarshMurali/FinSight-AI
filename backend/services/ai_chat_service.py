@@ -16,6 +16,7 @@ Flow:
 import sys
 import os
 import json
+from datetime import date
 from typing import Iterator
 from sqlalchemy.orm import Session
 from openai import OpenAI
@@ -50,6 +51,10 @@ Tool selection guide:
   • Why something happened, macro/news context, sector trends    → search_market_context
   • Fed decisions, geopolitical events, policy shocks            → get_market_events
   • Concentration risk, overweights, rebalancing recommendations → run_risk_analysis
+  • Live/current price of a specific ticker right now             → get_current_quote
+
+Never answer live "what's the price of X now" style questions from search_market_context —
+that tool is historical semantic search, not a live quote. Use get_current_quote instead.
 
 After receiving tool results, give a clear, specific analysis that cites exact numbers and tickers. \
 Use plain English. Highlight causal relationships between events and portfolio movements. \
@@ -75,7 +80,11 @@ class AIChatService:
         messages: list = [
             {
                 "role": "system",
-                "content": f"{_SYSTEM_PROMPT}\n\nThe user is asking about portfolio #{portfolio_id}.",
+                "content": (
+                    f"{_SYSTEM_PROMPT}\n\n"
+                    f"Today's date is {date.today().isoformat()}. "
+                    f"The user is asking about portfolio #{portfolio_id}."
+                ),
             },
             *conversation_history[-(MAX_TOOL_ITERATIONS * 4):],  # last 8 turns max
             {"role": "user", "content": user_message},

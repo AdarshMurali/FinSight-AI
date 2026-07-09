@@ -13,18 +13,26 @@ import logging
 import time
 from datetime import date, datetime
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from database import SessionLocal, engine, Base
-from models import Portfolio, RiskMetric, Alert
-from services.risk_analytics import compute_all
-from services.alert_engine import run_alerts_for_portfolio
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+_START_TIME = time.time()
+logger.info("===== RiskJob RUN STARTED =====")
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+try:
+    from database import SessionLocal, engine, Base
+    from models import Portfolio, RiskMetric, Alert
+    from services.risk_analytics import compute_all
+    from services.alert_engine import run_alerts_for_portfolio
+except Exception:
+    logger.exception("RiskJob RUN FAILED during import")
+    logger.info(f"===== RiskJob RUN ENDED (FAILED) — {time.time() - _START_TIME:.1f}s =====")
+    sys.exit(1)
 
 DB_WAKE_RETRIES = 5
 DB_WAKE_DELAY = 30  # seconds between retries (Azure SQL cold start takes ~20-40s)
@@ -98,4 +106,11 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    try:
+        run()
+    except Exception:
+        logger.exception("RiskJob RUN FAILED (uncaught exception)")
+        logger.info(f"===== RiskJob RUN ENDED (FAILED) — {time.time() - _START_TIME:.1f}s =====")
+        sys.exit(1)
+    else:
+        logger.info(f"===== RiskJob RUN ENDED (OK) — {time.time() - _START_TIME:.1f}s =====")

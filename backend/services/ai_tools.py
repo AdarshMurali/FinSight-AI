@@ -9,16 +9,18 @@ JSON-serializable results that get appended back to the message thread.
 import sys
 import os
 import json
+import time
 from datetime import date, timedelta
 from typing import Any
 from sqlalchemy.orm import Session
+import yfinance as yf
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'rag'))
 
 from services.portfolio_analyzer import PortfolioAnalyzer
 from services.position_detector import PositionChangeDetector
 from services.recommendation_engine import RecommendationEngine
-from rag.query_engine import MarketRAGEngine
+from rag.query_engine import MarketRAGEngine, _parse_doc_date
 from models import MarketEvent
 
 
@@ -170,6 +172,28 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_current_quote",
+            "description": (
+                "Get the live/current price of a single ticker right now — last price, "
+                "day change %, and volume. Use for 'what's X trading at' or 'current price "
+                "of X' style questions. This is NOT for historical or 'recent performance' "
+                "questions — use search_market_context for those."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "Ticker symbol, e.g. AAPL, MSFT, TSLA",
+                    },
+                },
+                "required": ["ticker"],
+            },
+        },
+    },
 ]
 
 
@@ -183,6 +207,43 @@ def _get_rag() -> MarketRAGEngine:
     if _rag_engine is None:
         _rag_engine = MarketRAGEngine()
     return _rag_engine
+
+
+# ── Live quote — short in-process TTL cache (placeholder for Redis, Phase 6) ──
+
+_QUOTE_CACHE_TTL = 30  # seconds
+_quote_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _get_current_quote(ticker: str) -> dict:
+    ticker = ticker.upper().strip()
+
+    cached = _quote_cache.get(ticker)
+    if cached and (time.time() - cached[0]) < _QUOTE_CACHE_TTL:
+        return cached[1]
+
+    try:
+        info = yf.Ticker(ticker).fast_info
+        last_price = info.get("lastPrice") or info.get("last_price")
+        prev_close = info.get("previousClose") or info.get("previous_close")
+        change_pct = (
+            round((last_price - prev_close) / prev_close * 100, 2)
+            if last_price is not None and prev_close
+            else None
+        )
+        result = {
+            "ticker": ticker,
+            "price": round(last_price, 2) if last_price is not None else None,
+            "previous_close": round(prev_close, 2) if prev_close is not None else None,
+            "change_pct": change_pct,
+            "volume": info.get("lastVolume") or info.get("last_volume"),
+            "as_of": "live quote, fetched now",
+        }
+    except Exception as e:
+        return {"error": f"Could not fetch live quote for {ticker}: {e}"}
+
+    _quote_cache[ticker] = (time.time(), result)
+    return result
 
 
 # ── Tool executor ─────────────────────────────────────────────────────────────
@@ -242,9 +303,8 @@ def execute_tool(name: str, arguments: dict, db: Session) -> Any:
             return [
                 {
                     "collection": r["collection"],
-                    "date": r["metadata"].get(
-                        "date",
-                        r["metadata"].get("published_at", r["metadata"].get("period", "N/A")),
+                    "date": (
+                        d.isoformat() if (d := _parse_doc_date(r["metadata"])) else "N/A"
                     ),
                     "snippet": r["document"][:350],
                     "relevance": round(r["relevance_score"], 3),
@@ -283,6 +343,9 @@ def execute_tool(name: str, arguments: dict, db: Session) -> Any:
             risk_tolerance=arguments.get("risk_tolerance"),
             optimization_goal="balanced",
         )
+
+    elif name == "get_current_quote":
+        return _get_current_quote(str(arguments["ticker"]))
 
     else:
         return {"error": f"Unknown tool: {name}"}

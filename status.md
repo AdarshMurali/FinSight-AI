@@ -1,5 +1,5 @@
 ## Project Status — FinSight AI
-**Last Updated**: 2026-07-06 (AWS ChromaDB fully loaded — 36K+ docs across all collections)
+**Last Updated**: 2026-07-08 (`risk_job.py` confirmed firing correctly on its own for the first time ever; `price_update_job.py` now live on AWS via EventBridge→SSM after a Lambda attempt was explored and rejected — see `CLOUD_MIGRATION.md`)
 
 ---
 
@@ -246,10 +246,64 @@
 | 5 — Advanced | 🔄 In Progress | 5.1 ✅ 5.2 ✅ (threshold) 5.3 ✅ · pending: 5.2 event/AI alerts |
 | 6 — Infrastructure | ⏳ Pending | CI/CD, Redis caching, JWT auth — not started |
 
-**Current Focus**: Phase 5 + 3.4b done. Pending: 5.2 event/AI alerts, JWT auth, Phase 6.
+**Current Focus**: Phase 5 + 3.4b done. Both 2026-07-06 data-staleness bugs fixed and verified (2026-07-07). Both daily EC2 batch jobs (`risk_job.py` 16:10 ET, `price_update_job.py` 16:00 ET) now live and verified on AWS (2026-07-08) — see `CLOUD_MIGRATION.md` for the full local-vs-cloud tracker. Next: decide on cleanup of unused Lambda/ECR artifacts, then push the FastAPI backend itself to the cloud (Phase 6 Task 6.3). Pending: 5.2 event/AI alerts, JWT auth (Task 6.4), rest of Phase 6.
 
 **Known Runtime Issues**:
 - ChromaDB container not running locally → `search_market_context` returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)
+
+**Confirmed (2026-07-06)**: Even when the FastAPI backend runs locally (`http://localhost:8000`), it points at the AWS ChromaDB instance — `CHROMA_HOST=13.206.225.80` in `backend/.env` — not a local container. `volatility_detector_job` on the Flink EC2 is confirmed running daily; its `volatility_events` collection is confirmed growing in real time.
+
+---
+
+### ⚠️ Important Pending Item: AI Chat gives stale/wrong answers for "recent" price questions
+
+**Found**: 2026-07-06 — user asked "how has Microsoft stock performed in the last few months" and got June–September **2023** OHLCV data back, presented as if current, even though today's date is 2026-07-06.
+
+**Root cause (confirmed by reading code, not guessed)**:
+1. **No live quote tool exists.** The 5 tools in `backend/services/ai_tools.py` (`get_portfolio_data`, `get_position_history`, `search_market_context`, `get_market_events`, `run_risk_analysis`) do not include any live/current stock price lookup. The only price-adjacent tool is `search_market_context`, which is pure ChromaDB semantic search.
+2. **`search_market_context` has zero recency awareness.** `backend/rag/query_engine.py:23-54` (`retrieve_context()`) ranks purely by cosine similarity (`relevance_score`) — no date filter, no recency boost. A query like "last few months" just matches whatever embeds closest, regardless of actual date.
+3. **The static collections (`ohlcv_data`, `market_news`, etc.) were bulk-loaded once** via `historical_loader.py` on 2025-06-18 (5 years of history ending at that run's `datetime.now()`) and are never incrementally refreshed. Even the newest static documents cap out ~mid-2025 — already stale vs. today.
+4. **`volatility_events` (written live daily by `volatility_detector_job`) is the one collection that IS fresh** — confirmed growing daily on the AWS ChromaDB instance — but it has no ranking advantage over the older bulk static docs in step 2's pure-cosine-similarity search, so fresher volatility data can easily lose to older, semantically-closer-sounding static docs and never surface in the answer.
+
+**Status (2026-07-07): ✅ FIXED AND VERIFIED** (items 1–3 below). Implemented:
+1. **Inject today's date into the system prompt** — `ai_chat_service.py:78` now sends `f"{_SYSTEM_PROMPT}\n\nToday's date is {date.today().isoformat()}. The user is asking about portfolio #{portfolio_id}."`
+2. **Live quote tool** — `get_current_quote(ticker)` added to `ai_tools.py` using `yfinance.Ticker(ticker).fast_info` (sub-second, not the slower `.history()` pull). Added to `TOOL_DEFINITIONS` + `execute_tool()` + system prompt tool guide, with a short in-process cache (~30s TTL, placeholder for the Phase 6 Redis line) and a graceful `{"error": ...}` fallback.
+3. **Recency-aware ranking in `retrieve_context()`** (`query_engine.py`) — blends `relevance_score` with a recency-decay term (180-day half-life, 30% weight) from each doc's date metadata. While implementing, found the date-key lookup only checked `date`/`published_at`/`period` — `volatility_events` actually uses `event_date`/`detected_at` and `earnings_filings` uses `filed_date`, so those collections were silently getting zero recency credit. Widened the key list to cover all of them.
+
+**Verified end-to-end (2026-07-07)**: started the FastAPI backend locally, hit `POST /api/analysis/ai/chat` with *"What's the current price of AAPL right now, and how has the market been recently in terms of volatility?"* (portfolio_id=1). Tool calls fired in order: `get_current_quote` → `search_market_context`. Answer correctly returned a real live AAPL price ($313.86, +0.37%) and cited genuinely recent 2026 volatility events by date (Visa 2026-07-06, Visa 2026-07-01, Mastercard 2026-06-24) — not 2023 data misrepresented as current, which was the original bug.
+
+Also caught one unrelated issue while restarting the backend for this test: `main.py`'s DB startup check has no cold-start retry (unlike `risk_job.py`'s `wait_for_db()`) — a paused Azure SQL instance makes the whole app fail to boot on the first attempt. Not fixed yet, noted here for later.
+
+**Deferred (not in this round)**: scheduling periodic re-runs of `historical_loader.py` to refresh the static ChromaDB collections themselves — bigger lift (new EventBridge schedule, real data volume). Items 1–3 above fix the "presented as current" symptom without needing this yet; revisit as a separate task later.
+
+**Files changed**: `backend/services/ai_chat_service.py`, `backend/services/ai_tools.py`, `backend/rag/query_engine.py`.
+
+---
+
+### ⚠️ Pending Item: Daily Securities Price Update Job (SQL Server)
+
+**Found**: 2026-07-06, while investigating the stale-chat issue above.
+
+**Problem**: `Securities.current_price` (`backend/models.py:64`) and `Positions.market_value` were populated once during the original synthetic data generation and are **never refreshed**. There is no daily job — `backend/scripts/` only contains `risk_job.py` (writes to `Risk_Metrics`, doesn't touch `Securities`/`Positions`). So portfolio values, position market values, and anything `get_portfolio_data` returns to the AI chat are all frozen at whatever they were when the DB was seeded — a separate staleness problem from the ChromaDB/RAG one above, but with the same root symptom (answers look current but aren't).
+
+**Status (2026-07-07): ✅ SCRIPT BUILT AND VERIFIED** (EventBridge scheduling not yet wired — see below). Built `backend/scripts/price_update_job.py`, same shape as `risk_job.py` (logging bookends, `wait_for_db()`, per-item try/except).
+
+**Two real bugs found and fixed while building it, both against live production data**:
+1. **`Security.current_price` wasn't mapped in the ORM at all.** The real DB column exists (`DECIMAL(18,4)`, NOT NULL — memory already flagged this gap) but `models.py`'s `Security` class never declared it, so `db.query(Security)....update(...)` failed with `CompileError: Unconsumed column names`. Fixed by adding `current_price = Column(DECIMAL(18, 4))` to the model.
+2. **`Positions.weight` overflowed on every single portfolio.** The real column is `DECIMAL(5,4)` (max 9.9999) storing a *fraction* (0.28 = 28%), not `DECIMAL(5,2)` as `models.py` claims, and not a 0–100 percentage. Computing `market_value / total_value * 100` overflowed immediately. Fixed by storing the raw fraction (`market_value / total_value`, no ×100) plus a defensive clamp to ±9.9999.
+
+**Verified end-to-end against production Azure SQL (2026-07-07)**: ran the job for real. Results:
+- `Securities.current_price`: 135/135 updated (e.g. AAPL $195.50 → $313.81, matching the real live price fetched earlier in this session)
+- `Portfolios`: 50/50 rolled up successfully
+- Portfolio 32's position weights sum to 0.9495 — reconciles almost exactly with its cash allocation (`$200M / $3.97B ≈ 5.04%`), confirming the math is internally consistent
+
+**Status update (2026-07-08): scheduled and live.** Explored moving this to AWS Lambda first (built a full container-image pipeline — Dockerfile, ECR, Lambda, IAM role) but hit a real architectural blocker: Azure SQL's firewall is IP-allowlist based, and Lambda without VPC config has no static egress IP (`Client with IP address '13.200.222.100' is not allowed to access the server`). Fixing that needs a NAT Gateway (~$32+/mo) or NAT instance (~$3-4/mo), which defeats the point of avoiding an always-on EC2 — especially since `finsight-flink`'s IP is already allow-listed and already running at $0 marginal cost. Decided to deploy this the same way as `risk_job.py` instead: pushed to EC2, created `finsight-daily-price-update` EventBridge schedule (16:00 ET Mon-Fri, 10 min before `risk_job.py`), verified via a manual SSM trigger before trusting the schedule (learned this lesson from `risk_job.py`'s 8-day silent failure). Full writeup in `CLOUD_MIGRATION.md`.
+
+**Sequencing note (confirmed)**: `risk_analytics.py` pulls its own historical yfinance series for VaR/stress math, so it doesn't strictly *depend* on fresh `Positions.market_value` — but `get_portfolio_data` (`portfolio_analyzer.py:48`, reads `portfolio.total_value` directly from the stored column) and the dashboard both do. Running price-update first just keeps everything consistent, it isn't load-bearing for risk math itself.
+
+**Deferred/optional**: daily `Portfolio_Performance` snapshot row from this job — separate nice-to-have, not required for the staleness fix.
+
+**Files changed**: `backend/scripts/price_update_job.py` (new), `backend/models.py` (`Security.current_price` added).
 
 ---
 
@@ -264,15 +318,16 @@
 | **AWS Flink EC2** | EC2 `13.233.21.229` (t3.medium) | ✅ Live | Kafka + Flink + Finnhub producer. EventBridge triggers daily risk job at 17:30 ET Mon–Fri. |
 | **Vercel (Frontend)** | Vercel cloud | ✅ Live | `https://frontend-sandy-seven-21.vercel.app` — deployed from git |
 | **FastAPI Backend** | Local only | ⚠️ Local | `http://localhost:8000` — needs EC2/cloud deployment via CI/CD |
-| **MCP Server** | Local only (stdio) | ⚠️ Local | `backend/mcp_server.py` — in git, works locally. SSE/hosted deployment pending CI/CD. To ship to customers: deploy to Flink EC2 with `--transport sse --port 8002` |
-| **Local ChromaDB** | Local only (Docker) | ⚠️ Local | `localhost:8001` — separate from AWS ChromaDB. Used in local dev only. |
+| **MCP Server** | AWS Flink EC2 (SSE) | ✅ Live | `http://13.233.21.229:8002/sse` — always-on, fund managers connect with one line |
+| **Local ChromaDB** | Shut down | ✅ Retired | Docker container no longer needed — all RAG uses AWS ChromaDB |
+| **Local SQL Server** | Shut down | ✅ Retired | Docker container no longer needed — all DB uses Azure SQL |
 | **Local Next.js** | Local only | ⚠️ Local | `http://localhost:3000` — Vercel is the production frontend |
 
 **What still needs to move off local (Phase 6 scope):**
 - FastAPI backend → EC2 or ECS (behind ALB + HTTPS)
-- MCP server → Flink EC2 in SSE mode (once backend is hosted)
-- Local ChromaDB → redundant once AWS ChromaDB is the source of truth
 - CI/CD pipeline → GitHub Actions: push to `main` → deploy backend + restart services
+
+**Docker Desktop: shut down — no local containers needed anymore**
 
 ---
 

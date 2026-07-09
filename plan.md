@@ -457,6 +457,39 @@ After:  User question → GPT-4o thinks → calls tool(s) → gets live data →
 
 ---
 
+#### ⚠️ Task 3.4a — Pending Fix: RAG gives stale price/market answers (found 2026-07-06)
+
+**Problem**: Asking chat "how has MSFT performed in the last few months" returned 2023 OHLCV data presented as current, even though today is 2026-07-06.
+
+**Why**: (1) No live stock quote tool exists among the 5 tools — `search_market_context` is the only price-adjacent tool and it's pure ChromaDB semantic search. (2) `MarketRAGEngine.retrieve_context()` (`backend/rag/query_engine.py`) ranks purely by cosine similarity with no recency filter/boost, so "recent months" phrasing can match old documents just as well as new ones. (3) Static collections (`ohlcv_data`, `market_news`, etc.) were bulk-loaded once on 2025-06-18 and never refreshed since. (4) `volatility_events` IS refreshed live daily by `volatility_detector_job` (confirmed growing on AWS ChromaDB) but has no ranking edge over the stale bulk docs, so it can lose the similarity contest and never surface.
+
+**Status (2026-07-07): ✅ FIXED AND VERIFIED**:
+- [x] Inject today's date into `ai_chat_service.py`'s system prompt (line ~78)
+- [x] New tool `get_current_quote(ticker)` in `ai_tools.py` via yfinance `fast_info`, with ~30s in-process TTL cache
+- [x] Recency-aware ranking in `retrieve_context()` — blends `relevance_score` with a recency-decay term; also fixed date-key lookup to cover `event_date`/`filed_date`/`detected_at` (found `volatility_events` and `earnings_filings` weren't matching the original `date`/`published_at`/`period` keys)
+
+Verified via a real end-to-end `/chat` call: correct live AAPL price + genuinely recent 2026 volatility events cited by date, not stale 2023 data. See `status.md` for full test output and root-cause writeup.
+
+**Deferred**: scheduled periodic refresh of `historical_loader.py` static collections — bigger lift, separate task later.
+
+---
+
+#### ⚠️ New Pending Item: Daily Securities Price Update Job (found 2026-07-06)
+
+**Problem**: `Securities.current_price` and `Positions.market_value` were set once at synthetic data generation and are never refreshed — there's no daily job for this (`backend/scripts/` only has `risk_job.py`, which writes `Risk_Metrics` and doesn't touch `Securities`/`Positions`). This means `get_portfolio_data` (the chat's main portfolio tool) always returns frozen prices/values, a second, independent staleness bug alongside the RAG one above.
+
+**Status (2026-07-07): ✅ SCRIPT BUILT AND VERIFIED, scheduling not yet wired**:
+- [x] `backend/scripts/price_update_job.py` — pulls latest price per ticker (yfinance `fast_info`), updates `Securities.current_price`, recomputes `Positions.market_value` + `weight`, rolls up `Portfolios.total_value`
+- [x] Fixed along the way: `Security.current_price` was missing from the ORM entirely (added to `models.py`); `Positions.weight` is `DECIMAL(5,4)` storing a fraction, not a 0–100 percentage (was overflowing on every portfolio until fixed)
+- [x] Verified against production Azure SQL: 135/135 securities, 50/50 portfolios updated correctly (AAPL $195.50 → $313.81)
+- [x] Deployed to EC2 and scheduled (2026-07-08) — `finsight-daily-price-update` EventBridge schedule, 16:00 ET Mon-Fri via SSM, verified end-to-end via manual trigger before trusting the schedule
+- [x] Considered AWS Lambda first, rejected — Azure SQL's IP-allowlist firewall has no good fit with Lambda's non-static egress IP without a NAT Gateway/instance, which would defeat the goal of avoiding an always-on EC2. See `CLOUD_MIGRATION.md` for full writeup.
+- [ ] Optional: also insert a daily `Portfolio_Performance` row from this job to keep daily/MTD/YTD return fields alive
+
+See `status.md` for full bug/verification writeup.
+
+---
+
 #### Task 3.4b: FastMCP Server (Custom MCP Server)
 **Goal**: Expose FinSight's portfolio analysis tools as a standards-compliant MCP server
 so any MCP-compatible AI client can connect and query portfolio data directly
@@ -855,6 +888,43 @@ The history is being silently built up and not yet used. This task surfaces that
 
 ---
 
+#### Task 6.4: Authentication & Multi-Tenant Portfolio Access (found/scoped 2026-07-07)
+**Goal**: When JWT auth is added, don't just gate the API — make each fund manager see only the portfolios (and their customers) they actually manage, instead of all 50. This is a real-world multi-tenant access control pattern, not just a login screen.
+
+**Why this matters**: Today there is no concept of "who is logged in" anywhere in the schema — `Customers` are the institutions being managed, not the people managing them. Bolting JWT on without also scoping data access would just add a login page in front of the same unrestricted 50-portfolio view.
+
+**1. Data model**
+- New `Users` (fund managers) table: credentials, `role` (`fund_manager` | `admin`)
+- `Portfolios.manager_id` FK → `Users` — one owner per portfolio (simplest model; upgrade to a `Portfolio_Managers(portfolio_id, user_id, role)` junction table later if a portfolio ever needs multiple managers/analysts)
+- `admin` role bypasses scoping entirely (needed for ops/compliance-style oversight, and for demoing the full dataset)
+- One-time backfill: the existing 50 seeded portfolios have no owner — assign them across a few demo manager accounts + one admin account
+
+**2. Enforcement layer (the part that's easy to get wrong)**
+- Every one of the 18+ REST endpoints currently trusts whatever `portfolio_id` is in the URL (`GET /api/portfolios/{id}`, `/api/risk/{id}`, etc.) — without scoping, Manager A could request Manager B's portfolio ID directly (classic IDOR).
+- Fix once, centrally: a reusable FastAPI dependency, e.g. `require_portfolio_access(portfolio_id) -> Portfolio`, used by every portfolio-scoped route instead of ad-hoc `db.query(Portfolio).get(id)` calls.
+- List endpoints (`GET /api/portfolios`) become `WHERE manager_id = current_user.id` (unfiltered for `admin`).
+
+**3. Non-obvious gotcha: AI chat + MCP server**
+- `backend/services/ai_tools.py`'s `execute_tool()` dispatcher and `backend/mcp_server.py`'s tool functions both accept `portfolio_id` as a plain argument chosen by the LLM/tool caller — not a REST path a dependency can gate.
+- If only the REST routers are scoped, a logged-in manager could ask the chat "show me portfolio 37's risk" and get another manager's data straight through tool-calling, completely bypassing auth.
+- The same identity/scoping check needs to be threaded into the AI tool dispatcher and the MCP tool handlers, not just the FastAPI routers.
+
+**4. Frontend**
+- Login page, JWT stored in an httpOnly cookie (safer than localStorage against XSS)
+- Portfolio list/dropdown naturally narrows to "my portfolios" once the list endpoint is scoped
+- Admin view/toggle to see the full portfolio set
+
+**Deliverables**:
+- `Users` table + password hashing (bcrypt/argon2) + `/auth/login`, `/auth/refresh` endpoints
+- `Portfolios.manager_id` FK + backfill script for existing 50 portfolios across demo accounts
+- `require_portfolio_access()` FastAPI dependency, retrofitted into all portfolio-scoped routers
+- Scoping check added to `ai_tools.py` tool dispatcher and `mcp_server.py` tool handlers
+- Frontend login flow + scoped portfolio list/dropdown + admin view
+
+**Resume value**: "Implemented JWT-based multi-tenant access control ensuring fund managers can only access their own authorized portfolios — enforced consistently across REST API, agentic AI chat tool-calling, and MCP server layers."
+
+---
+
 ## Success Metrics
 
 **Technical**:
@@ -939,7 +1009,7 @@ These were identified as gaps that add resume value or practical robustness. Rev
 
 | Item | Priority | Notes |
 |---|---|---|
-| **JWT Auth** | High | Currently zero auth — any reviewer can hit the public API. Even a fake login flow adds credibility to the demo. Wire into FastAPI OAuth2PasswordBearer. |
+| **JWT Auth + Multi-Tenant Access** | High | Currently zero auth — any reviewer can hit the public API. See Task 6.4 for the full plan: not just login, but scoping each fund manager to only their own portfolios (data model + API + AI chat/MCP enforcement). |
 | **Langfuse (LLM tracing)** | High | Free tier. Tracks every GPT-4o call — tokens, latency, tool calls, cost. 20-minute add. Strong resume signal for LLM engineering maturity. |
 | **Rate limiting** (`slowapi`) | Medium | One-liner FastAPI middleware. Prevents API abuse on public demo. |
 | **Prometheus + Grafana** | Medium | Observability story for resume. Both free/open-source, can run on EC2. Shows production-readiness mindset. |
@@ -1141,5 +1211,5 @@ load_secrets("finsight/prod")  # call before app init
 ---
 
 **Created**: 2026-06-14
-**Last Updated**: 2026-07-06
-**Status**: Tasks 5.1, 5.2, 5.3, 3.4b (FastMCP) complete. AWS ChromaDB fully loaded (36K+ docs). Pending: 5.2 event/AI alerts, JWT auth, Phase 6.
+**Last Updated**: 2026-07-08
+**Status**: Tasks 5.1, 5.2, 5.3, 3.4b (FastMCP + hosted on AWS EC2) complete. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08) — see `CLOUD_MIGRATION.md`. Task 6.4 (JWT + multi-tenant access) scoped, not started. Pending: 5.2 event/AI alerts, Phase 6 (JWT auth, Redis, CI/CD).
