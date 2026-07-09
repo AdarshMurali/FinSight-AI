@@ -19,6 +19,7 @@ Message schema (all messages have a "type" field):
 import asyncio
 import json
 import logging
+import os
 import random
 import threading
 from datetime import datetime, timezone
@@ -155,9 +156,10 @@ async def run_kafka_consumer():
     def _kafka_thread():
         try:
             from kafka import KafkaConsumer  # type: ignore
+            bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
             consumer = KafkaConsumer(
                 "market.news",
-                bootstrap_servers="localhost:9092",
+                bootstrap_servers=bootstrap_servers,
                 auto_offset_reset="latest",
                 group_id="finsight-ws-bridge",
                 value_deserializer=lambda m: json.loads(
