@@ -395,7 +395,7 @@ export default function Dashboard() {
       <div className="flex items-center gap-3 border border-[#2e2e2e] border-t-0 px-3 py-1.5 bg-[#0d0d0d] text-[9px] tracking-wider">
         <span className="font-bold opacity-90" style={{ color: "#FF8000" }}>SYS</span>
         <span className="text-[#3A3A3A]">│</span>
-        <span className="text-[#9a9a9a]">API localhost:8000</span>
+        <span className="text-[#9a9a9a]">API {(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/^https?:\/\//, "")}</span>
         <span className="text-[#3A3A3A]">│</span>
         <span className="text-[#9a9a9a]">WS {connected ? "CONNECTED" : "RECONNECTING"}</span>
         <span className="text-[#3A3A3A]">│</span>
