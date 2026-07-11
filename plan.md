@@ -1189,50 +1189,46 @@ All data between the browser and backend travels over the internet — currently
 
 ---
 
-### Task 7.2: AWS Secrets Manager (Credentials & API Keys)
+### Task 7.2: AWS Secrets Manager + SSM Parameter Store — ✅ COMPLETE, deployed to production (2026-07-11)
 
-Currently all secrets (OpenAI key, Finnhub key, DB password, etc.) live in `.env` files on disk. For production, these should be stored in AWS Secrets Manager — no plaintext secrets on EC2 or in environment variables baked into Docker images.
+All real credentials moved out of plaintext `.env` on the backend EC2. Split across two AWS services rather than Secrets Manager alone, since only some of the original `.env` contents are genuinely secret:
 
-**What to migrate:**
-| Secret | Current location | Move to |
-|---|---|---|
-| `OPENAI_API_KEY` | `backend/.env`, EC2 `.env` | Secrets Manager |
-| `FINNHUB_API_KEY` | `backend/.env`, EC2 `.env` | Secrets Manager |
-| `FRED_API_KEY` | `backend/.env` | Secrets Manager |
-| `AlphaVantage_API_KEY` | `backend/.env` | Secrets Manager |
-| SQL Server `sa` password | `backend/.env` | Secrets Manager |
-| Azure SQL connection string | `backend/.env` | Secrets Manager |
+**Secrets Manager** (`finsight/prod`, one bundled JSON secret, ap-south-1) — the 11 real credentials: `DB_SERVER`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `OPENAI_API_KEY`, `FRED_API_KEY`, `AlphaVantage_API_KEY`, `FINNHUB_API_KEY`, `FINNHUB_WEB_HOOK_SECRET`. One secret rather than one-per-key — a single EC2 role has no reason for split IAM grants, and it's one `boto3` call instead of several.
 
-**Implementation approach:**
-1. Store each secret in AWS Secrets Manager (ap-south-1) via console or CLI
-2. Attach `secretsmanager:GetSecretValue` permission to the EC2 IAM role
-3. At app startup, fetch secrets via `boto3.client('secretsmanager').get_secret_value()`
-4. Inject into `os.environ` before FastAPI / producers initialize
-5. Remove `.env` files from EC2 (keep local `.env` for dev only)
+**SSM Parameter Store** (Standard tier, free) — 3 non-secret infra values that still shouldn't sit in a public-facing repo/plaintext file: `/finsight/chroma_host`, `/finsight/chroma_port`, `/finsight/kafka_bootstrap_servers` (internal EC2 IPs/ports).
 
-**Rough code pattern:**
+**Deliberately not migrated**: `NGROK_API_KEY` — grepped the backend, zero references, retired instead (leftover from pre-domain-deployment dev). `CORS_ORIGINS`, `API_HOST/PORT/RELOAD`, `DB_ODBC_DRIVER`, `COOKIE_SECURE` — plain config, no confidentiality need, left in the EC2's (now much smaller) `.env`.
+
+**Implementation** (`backend/services/secrets_loader.py`):
 ```python
-import boto3, json, os
+import json, os
 
-def load_secrets(secret_name: str, region: str = "ap-south-1"):
-    client = boto3.client("secretsmanager", region_name=region)
-    response = client.get_secret_value(SecretId=secret_name)
-    secrets = json.loads(response["SecretString"])
-    for k, v in secrets.items():
-        os.environ[k] = v
+def load_aws_secrets() -> None:
+    if os.environ.get("USE_AWS_SECRETS", "").lower() != "true":
+        return
+    import boto3
+    region = os.environ.get("AWS_REGION", "ap-south-1")
 
-load_secrets("finsight/prod")  # call before app init
+    sm = boto3.client("secretsmanager", region_name=region)
+    secret = json.loads(sm.get_secret_value(SecretId="finsight/prod")["SecretString"])
+    for k, v in secret.items():
+        os.environ[k] = str(v)
+
+    ssm = boto3.client("ssm", region_name=region)
+    for param_name, env_key in SSM_PARAM_TO_ENV.items():
+        os.environ[env_key] = ssm.get_parameter(Name=param_name)["Parameter"]["Value"]
 ```
+Called from the top of `config.py`, before `Settings()` is instantiated — pydantic-settings' priority order is env vars > `.env` file > defaults, so this is safe to enable without first stripping the EC2 `.env` (real env vars win regardless). Opt-in via `USE_AWS_SECRETS=true`; `boto3` is only imported when the flag is on, so it's not a hard dependency for local dev. No try/except swallowing — if AWS is unreachable with the flag on, the app fails to start with a clear traceback rather than silently booting with missing credentials.
 
-**Prerequisites:**
-- EC2 instance profile must have `secretsmanager:GetSecretValue` on the secret ARN
-- `boto3` already installed in venv
+**Bug found during first deploy**: the IAM policy grants `ssm:GetParameter` (singular), but the first version of the code called the batch `ssm.get_parameters()` API — a *different* IAM action (`ssm:GetParameters`, plural) than what was granted, so it 403'd on the real EC2 role despite working locally under the broader `lavanya` CLI profile. Fixed by looping `get_parameter()` once per param instead of one batch call.
+
+**Deployed and verified** (2026-07-11): `boto3` installed in the EC2's `backendvenv`, systemd unit (`finsight-backend.service`) updated with `Environment=USE_AWS_SECRETS=true` + `Environment=AWS_REGION=ap-south-1`, service restarted. Confirmed via log (`[OK] Loaded 11 secrets from Secrets Manager (finsight/prod) + 3 params from SSM Parameter Store` → `[OK] Database connected`) and a live `/health` check. Real secrets then stripped from the EC2's `.env` (backed up to `.env.bak.20260711` first) and the service restarted again with zero `.env` fallback — proving the app runs purely on AWS-sourced credentials via the EC2's IAM instance role, not just "env vars happened to win over stale file values." Production login re-verified in a real browser afterward (JWT signing now uses the AWS-sourced key too).
 
 ---
 
 **Created**: 2026-06-14
 **Last Updated**: 2026-07-11
-**Status**: All of Phase 5 (5.1, 5.2 incl. event + AI alerts, 5.3, 5.4 PDF reports) complete. 3.4b (FastMCP), 6.2 (Redis/Valkey caching), 6.4 (JWT + multi-tenant access) also complete and live in production as of 2026-07-11. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend live at `https://www.fin-sightai.space`. MCP server relocated from the Flink EC2 to the ChromaDB EC2 2026-07-11 (that box resized t3.micro → t3.small to fit it, now also running Redis/Valkey). Overview tab volatility display bug (found during 5.4) fixed and deployed 2026-07-11 — see status.md for details. Pending: real CI/CD, Dockerization, Excel report format (deferred).
+**Status**: All of Phase 5 (5.1, 5.2 incl. event + AI alerts, 5.3, 5.4 PDF reports) complete. 3.4b (FastMCP), 6.2 (Redis/Valkey caching), 6.4 (JWT + multi-tenant access), 7.2 (AWS Secrets Manager + SSM Parameter Store) also complete and live in production as of 2026-07-11. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend live at `https://www.fin-sightai.space`. MCP server relocated from the Flink EC2 to the ChromaDB EC2 2026-07-11 (that box resized t3.micro → t3.small to fit it, now also running Redis/Valkey). Overview tab volatility display bug (found during 5.4) fixed and deployed 2026-07-11 — see status.md for details. Pending: real CI/CD, Dockerization, Excel report format (deferred).
 
 ---
 

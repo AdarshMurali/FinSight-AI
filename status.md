@@ -244,6 +244,13 @@
   - Verified in a real browser session both locally and on production (`https://www.fin-sightai.space`, logged in as Sarah Chen, portfolio 1): YTD RETURN `+13.40%`, VOLATILITY `12.4%`, sector allocation `55.8%/13.8%/11.5%/11.2%`, position weights correct.
   - Frontend-only change — no backend/EC2 deploy needed; shipped via Vercel's git auto-deploy on push to `adarsh` (commit `477794c`).
 
+- ✅ Task 7.2: AWS Secrets Manager + SSM Parameter Store — COMPLETE, deployed to production (2026-07-11)
+  - **Split by sensitivity**: 11 real credentials (DB creds, `JWT_SECRET_KEY`, `OPENAI_API_KEY`, `FRED_API_KEY`, `AlphaVantage_API_KEY`, `FINNHUB_API_KEY`, `FINNHUB_WEB_HOOK_SECRET`) bundled into one Secrets Manager secret (`finsight/prod`); 3 non-secret infra values (`CHROMA_HOST`, `CHROMA_PORT`, `KAFKA_BOOTSTRAP_SERVERS`) into free-tier SSM Parameter Store. `NGROK_API_KEY` retired (unused, zero references found).
+  - `backend/services/secrets_loader.py` — opt-in via `USE_AWS_SECRETS=true`, runs at the top of `config.py` before `Settings()` is instantiated, fails loudly (no swallowed exceptions) if AWS is unreachable.
+  - **Bug found on first deploy**: IAM policy grants `ssm:GetParameter` (singular) but the code called the batch `ssm:GetParameters` — a different IAM action — so it 403'd on the real EC2 role despite working locally under a broader CLI profile. Fixed by looping the singular call per param.
+  - **Deployed**: `boto3` installed in the EC2's `backendvenv`, systemd unit updated with `Environment=USE_AWS_SECRETS=true`, service restarted, confirmed via log (`[OK] Loaded 11 secrets... + 3 params...` → `[OK] Database connected`). Real secrets then stripped from the EC2 `.env` (backed up first) and the service restarted again — proving the app runs purely on AWS-sourced credentials via the EC2 IAM role, with zero `.env` fallback. Production login re-verified in browser afterward.
+  - See `plan.md` Task 7.2 for the full writeup (code pattern, migration table, verification steps).
+
 ---
 
 ### DevOps / Repository Hygiene ✅ COMPLETED (2026-06-21)
@@ -255,7 +262,9 @@
 
 ---
 
-### API Keys Configured (backend/.env)
+### API Keys Configured
+
+Local dev still reads these from `backend/.env` directly. Production (EC2) sources them from AWS Secrets Manager (`finsight/prod`) as of Task 7.2 (2026-07-11) — the EC2 `.env` no longer holds real values, see Task 7.2 above.
 
 | Key | Provider | Used for |
 |---|---|---|
@@ -276,8 +285,9 @@
 | 4 — Frontend | ✅ Complete | All 3 tasks done (4.1, 4.2, 4.3) |
 | 5 — Advanced | ✅ Complete | 5.1 ✅ 5.2 ✅ (all 3 alert types) 5.3 ✅ 5.4 ✅ (PDF only, Excel deferred) |
 | 6 — Infrastructure | 🔄 In Progress | Backend cloud deploy ✅ (6.3 partial) · 6.2 Redis/Valkey caching ✅ · 6.4 JWT auth ✅ · Dockerization, real CI/CD still pending |
+| 7 — Security Hardening | 🔄 In Progress | 7.2 AWS Secrets Manager + SSM Parameter Store ✅ · 7.1 HTTPS/TLS already covered by existing nginx+Certbot setup |
 
-**Current Focus**: All of Phase 5 is now complete and deployed, including Task 5.4 (PDF report generation) as of 2026-07-11. The Overview tab volatility/percentage display bug found while building the report is now fixed and deployed (see dedicated entry above). The ChromaDB EC2 runs four services together (ChromaDB, backend, MCP server, Valkey) after being resized t3.micro → t3.small to fit them; the MCP server was also relocated there from the market-hours-only Flink EC2. Next: retire the stale pre-auth MCP server still sitting on the Flink EC2, real CI/CD, Dockerization.
+**Current Focus**: All of Phase 5 is now complete and deployed, including Task 5.4 (PDF report generation) as of 2026-07-11. The Overview tab volatility/percentage display bug found while building the report is now fixed and deployed (see dedicated entry above). Task 7.2 (AWS Secrets Manager + SSM Parameter Store) is also complete and deployed — the backend EC2 now pulls all real credentials from AWS via its IAM role, with the plaintext `.env` stripped down to non-secret config only. The ChromaDB EC2 runs four services together (ChromaDB, backend, MCP server, Valkey) after being resized t3.micro → t3.small to fit them; the MCP server was also relocated there from the market-hours-only Flink EC2. Next: retire the stale pre-auth MCP server still sitting on the Flink EC2, real CI/CD, Dockerization.
 
 **Known Runtime Issues**:
 - ChromaDB container not running locally → `search_market_context` returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)
