@@ -58,6 +58,26 @@ export const getPerformance = (id: number, limit = 30) =>
 export const getHistory = (id: number, limit = 50) =>
   apiFetch<Transaction[]>(`/api/portfolios/${id}/history?limit=${limit}`);
 
+// PDF download — not JSON, so bypasses apiFetch's res.json() and instead
+// triggers a browser download directly from the response blob.
+export async function downloadPortfolioReport(id: number): Promise<void> {
+  const res = await fetch(`${BASE}/api/portfolios/${id}/report`, {
+    credentials: "include",
+    headers: { "ngrok-skip-browser-warning": "1" },
+  });
+  if (!res.ok) throw new Error(`Report generation failed → ${res.status}`);
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `finsight-report-portfolio-${id}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // ── Market Events ─────────────────────────────────────────────────────────────
 export const getMarketEvents = (limit = 50) =>
   apiFetch<MarketEvent[]>(`/api/market-events?limit=${limit}`);

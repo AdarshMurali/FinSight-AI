@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import date
@@ -7,6 +7,7 @@ from database import get_db
 from models import Portfolio, Position, Transaction, PortfolioPerformance, Customer, User
 from auth import get_current_user, require_portfolio_access, scope_portfolio_query
 from services.cache import get_or_set
+from services.report_generator import generate_portfolio_pdf
 from schemas import (
     PortfolioResponse,
     PortfolioDetailsResponse,
@@ -132,3 +133,18 @@ def get_portfolio_history(
 
     transactions = query.order_by(Transaction.transaction_date.desc()).limit(limit).all()
     return transactions
+
+
+@router.get("/{portfolio_id}/report")
+def get_portfolio_report(portfolio: Portfolio = Depends(require_portfolio_access), db: Session = Depends(get_db)):
+    """Generate and download a PDF risk report for this portfolio — packages
+    already-computed data (overview, risk metrics, positions, alerts) plus a
+    fresh short AI commentary paragraph. Not cached: it's a deliberate,
+    infrequent, on-demand action, not a hot-path read like the other endpoints."""
+    pdf_bytes = generate_portfolio_pdf(db, portfolio.portfolio_id)
+    filename = f"finsight-report-portfolio-{portfolio.portfolio_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

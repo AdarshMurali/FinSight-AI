@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   getPortfolio, getPositions, getPerformance, getRiskMetrics, refreshRiskMetrics,
-  getRiskHistory, getAlerts, markAlertRead, markAllAlertsRead,
+  getRiskHistory, getAlerts, markAlertRead, markAllAlertsRead, downloadPortfolioReport,
   PortfolioDetail, Position, Performance, RiskMetrics, RiskHistoryPoint, AlertItem,
 } from "@/lib/api";
 import { useWebSocket, WsMessage } from "@/hooks/useWebSocket";
@@ -16,7 +16,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, Legend,
   BarChart, Bar,
 } from "recharts";
-import { Sparkles, Wifi, WifiOff, RefreshCw, Bell, CheckCheck, X } from "lucide-react";
+import { Sparkles, Wifi, WifiOff, RefreshCw, Bell, CheckCheck, X, FileDown } from "lucide-react";
 
 const COLORS = ["#F5821F","#00CC44","#FFB300","#3b82f6","#FF4040","#a78bfa","#38bdf8","#e879f9"];
 
@@ -58,6 +58,18 @@ export default function PortfolioPage() {
   const [liveValue,     setLiveValue]     = useState<number | null>(null);
   const [liveChangePct, setLiveChangePct] = useState<number | null>(null);
   const [flashKey,      setFlashKey]      = useState(0);
+  const [reportDownloading, setReportDownloading] = useState(false);
+
+  const handleDownloadReport = async () => {
+    setReportDownloading(true);
+    try {
+      await downloadPortfolioReport(pid);
+    } catch {
+      alert("Report generation failed — please try again.");
+    } finally {
+      setReportDownloading(false);
+    }
+  };
 
   const { connected } = useWebSocket((msg: WsMessage) => {
     if (msg.type === "portfolio_update" && msg.portfolio_id === pid) {
@@ -179,12 +191,21 @@ export default function PortfolioPage() {
             {portfolio.customer && ` · ${portfolio.customer.customer_name}`}
           </p>
         </div>
-        <Link
-          href={`/ai-insights?portfolio=${pid}`}
-          className="flex items-center gap-2 px-3 py-2 bg-[#F5821F]/10 border border-[#F5821F]/30 text-[#F5821F] text-[10px] hover:bg-[#F5821F]/20 transition-colors tracking-wider"
-        >
-          <Sparkles size={12} /> AI INSIGHTS
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDownloadReport}
+            disabled={reportDownloading}
+            className="flex items-center gap-2 px-3 py-2 bg-[#F5821F]/10 border border-[#F5821F]/30 text-[#F5821F] text-[10px] hover:bg-[#F5821F]/20 transition-colors tracking-wider disabled:opacity-50"
+          >
+            <FileDown size={12} /> {reportDownloading ? "GENERATING…" : "EXPORT REPORT"}
+          </button>
+          <Link
+            href={`/ai-insights?portfolio=${pid}`}
+            className="flex items-center gap-2 px-3 py-2 bg-[#F5821F]/10 border border-[#F5821F]/30 text-[#F5821F] text-[10px] hover:bg-[#F5821F]/20 transition-colors tracking-wider"
+          >
+            <Sparkles size={12} /> AI INSIGHTS
+          </Link>
+        </div>
       </div>
 
       {/* ── Stat cards ───────────────────────────────────────────────────── */}
