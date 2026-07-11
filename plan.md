@@ -844,28 +844,36 @@ The history is being silently built up and not yet used. This task surfaces that
 
 ---
 
-#### Task 6.2: Redis Caching Strategy
+#### Task 6.2: Redis Caching Strategy ✅ COMPLETE (2026-07-11)
 **Goal**: Implement caching for performance
 
-**What to cache (priority order)**:
-| What | TTL | Reason |
+**What's cached (three shipped, two deferred)**:
+| What | TTL | Status |
 |---|---|---|
-| Risk metrics (`/api/risk/{id}`) | 24h | Computed once/day — no reason to hit SQL on every tab open |
-| Portfolio summary + positions | 5 min | Heavy SQL joins; data changes only on transactions |
-| Unread alert count | 60s | Sidebar polls every 60s — trivial to cache |
-| AI chat responses | 1h (keyed by query hash) | Saves OpenAI cost on repeated identical questions |
-| yfinance price fetches | 30s | Risk refresh hits yfinance per ticker — slow without cache |
+| Unread alert count | 60s | ✅ Done — precise invalidation on mark-read/mark-all-read |
+| Risk metrics (`/api/risk/{id}`) | 30 min (not 24h as originally planned) | ✅ Done — `risk_job.py` runs on a different EC2 than Redis, no safe cross-box invalidation without exposing an unauthenticated Redis to the network, so a shorter TTL bounds staleness naturally instead |
+| Portfolio summary + positions | 5 min | ✅ Done |
+| AI chat responses | 1h (keyed by query hash) | Not yet — lower priority, revisit if OpenAI cost becomes worth optimizing |
+| yfinance price fetches | 30s | Not yet — the in-process TTL cache already added to `get_current_quote` (Task 3.4a) covers the main case |
 
-**What NOT to cache**: WebSocket price ticks (streaming by nature), Flink/Kafka data.
+**What's NOT cached**: WebSocket price ticks (streaming by nature), Flink/Kafka data.
+
+**Deployed as Valkey** (Redis-compatible fork), not Redis itself — AL2023's default repos have no `redis` package, only `valkey` (actively maintained, AWS's current recommendation) and the older `redis6`. Fully wire-compatible with the Python `redis` client. Self-hosted on the ChromaDB EC2 (Option A from the original plan below), binds `127.0.0.1` only — no security group change needed.
+
+**Deliverables**:
+- ✅ `backend/services/cache.py` — reusable `get_or_set()`/`invalidate()` wrapper, graceful fallback if Redis/Valkey is unreachable (same posture as ChromaDB elsewhere in this app)
+- ✅ Applied to alerts, risk metrics, portfolio summary/positions
+- ✅ Cache invalidation logic (same-process writes only — see risk metrics TTL note above for the cross-EC2 case)
+- Not built: AI chat response caching, yfinance fetch caching (deferred, lower value)
+
+<details>
+<summary>Original planning notes (kept for reference)</summary>
 
 **AWS deployment options** (decide when implementing):
 - **Option A — Install on existing EC2**: `apt install redis` on the ChromaDB t3.micro. Free, uses spare capacity, good enough for demo.
 - **Option B — AWS ElastiCache**: Managed Redis, ~$15-20/month for `cache.t3.micro`. Overkill for this project but resume-worthy if budget allows.
 
-**Deliverables**:
-- Redis integration
-- Cache middleware
-- Cache invalidation logic
+</details>
 
 ---
 
@@ -1224,7 +1232,7 @@ load_secrets("finsight/prod")  # call before app init
 
 **Created**: 2026-06-14
 **Last Updated**: 2026-07-11
-**Status**: Tasks 5.1, 5.2 (incl. event + AI alerts), 5.3, 3.4b (FastMCP), 6.4 (JWT + multi-tenant access) all complete and live in production as of 2026-07-11. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend live at `https://www.fin-sightai.space`. MCP server relocated from the Flink EC2 to the ChromaDB EC2 2026-07-11 (that box resized t3.micro → t3.small to fit it). Pending: Redis caching (same box, capacity now confirmed), Task 5.4 report generation, real CI/CD, Dockerization.
+**Status**: Tasks 5.1, 5.2 (incl. event + AI alerts), 5.3, 3.4b (FastMCP), 6.2 (Redis/Valkey caching), 6.4 (JWT + multi-tenant access) all complete and live in production as of 2026-07-11. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend live at `https://www.fin-sightai.space`. MCP server relocated from the Flink EC2 to the ChromaDB EC2 2026-07-11 (that box resized t3.micro → t3.small to fit it, now also running Redis/Valkey). Pending: Task 5.4 report generation, real CI/CD, Dockerization.
 
 ---
 

@@ -210,9 +210,12 @@
 
 ### Phase 6: Infrastructure & Deployment — IN PROGRESS
 - ⏳ Task 6.1: Dockerization (full docker-compose for all services)
-- ⏳ Task 6.2: Redis Caching (portfolio cache, AI response cache)
-  - Note: Task 4.2 was implemented without Redis using in-process asyncio.
-    Redis in Phase 6 is for HTTP response caching + enabling multi-worker WebSocket scaling.
+- ✅ Task 6.2: Redis Caching — COMPLETE (2026-07-11), deployed as Valkey
+  - Self-hosted on the ChromaDB EC2 (Redis unavailable in AL2023's default repos; Valkey — the actively-maintained Redis-compatible fork — was), binds `127.0.0.1` only
+  - `backend/services/cache.py` — reusable `get_or_set()`/`invalidate()`, graceful fallback if unreachable
+  - Cached: unread alert count (60s, invalidated on mark-read), portfolio summary/positions (5min), risk metrics (30min — shorter than the originally planned 24h, since `risk_job.py` runs on a different EC2 with no safe way to invalidate across boxes)
+  - Not yet cached: AI chat responses, yfinance fetches (lower priority, deferred)
+  - Note: Task 4.2 was implemented without Redis using in-process asyncio — that's unrelated to this caching layer.
 - ✅ Task 6.3 (partial — cloud deploy done, CI/CD still manual): FastAPI backend deployed 2026-07-09
   - Reused the always-on ChromaDB EC2 (`13.206.225.80`) — $0 extra EC2 cost
   - Domain: `fin-sightai.space` (GoDaddy), `api.fin-sightai.space` → backend, `www.fin-sightai.space` → Vercel frontend
@@ -260,9 +263,9 @@
 | 3 — AI/LLM | ✅ Complete | GPT-4o, RAG, agentic chat (3.4a), FastMCP server (3.4b) |
 | 4 — Frontend | ✅ Complete | All 3 tasks done (4.1, 4.2, 4.3) |
 | 5 — Advanced | 🔄 In Progress | 5.1 ✅ 5.2 ✅ (all 3 alert types) 5.3 ✅ · pending: 5.4 report generation |
-| 6 — Infrastructure | 🔄 In Progress | Backend cloud deploy ✅ (6.3 partial) · 6.4 JWT auth ✅ (local only) · Redis, Dockerization, real CI/CD still pending |
+| 6 — Infrastructure | 🔄 In Progress | Backend cloud deploy ✅ (6.3 partial) · 6.2 Redis/Valkey caching ✅ · 6.4 JWT auth ✅ · Dockerization, real CI/CD still pending |
 
-**Current Focus**: Task 6.4 (JWT auth + multi-tenant portfolio access) is fully deployed to production and verified end-to-end — login, REST scoping, AI chat tool dispatcher, MCP server, and WebSocket all enforce per-manager access on the live site (`www.fin-sightai.space` / `api.fin-sightai.space`). The MCP server was also relocated from the Flink EC2 (market-hours-only, wrong box for an always-on service) to the ChromaDB EC2, which was resized t3.micro → t3.small to fit ChromaDB + backend + MCP (+ Redis, next) comfortably. Next: Redis caching (Task 6.2, same box), 5.4 report generation, real CI/CD, Dockerization.
+**Current Focus**: Task 6.4 (JWT auth) and Task 6.2 (Redis caching) are both fully deployed to production and verified end-to-end. The ChromaDB EC2 now runs four services together (ChromaDB, backend, MCP server, Valkey) after being resized t3.micro → t3.small on 2026-07-11 to fit them; the MCP server was also relocated there from the market-hours-only Flink EC2. Next: retire the stale pre-auth MCP server still sitting on the Flink EC2, Task 5.4 report generation, real CI/CD, Dockerization.
 
 **Known Runtime Issues**:
 - ChromaDB container not running locally → `search_market_context` returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)

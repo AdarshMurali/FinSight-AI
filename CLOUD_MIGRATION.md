@@ -18,6 +18,7 @@
 | MCP Server | ChromaDB EC2 (SSE transport), moved 2026-07-11 | `http://13.206.225.80:8002/sse` | Live | Moved off the Flink EC2 — see writeup below. Own isolated venv (`mcpvenv`), own systemd service (`finsight-mcp`), bound to the admin identity. |
 | Frontend | Vercel | `https://www.fin-sightai.space` (also `https://frontend-sandy-seven-21.vercel.app`) | Live | Deployed from git; custom domain added 2026-07-09 |
 | FastAPI backend | Same EC2 as ChromaDB (`13.206.225.80`), reused for $0 extra cost | `https://api.fin-sightai.space` | Live | Deployed 2026-07-09 — see below |
+| Redis (caching) | Same EC2 as ChromaDB/backend, self-hosted as **Valkey** (Redis-compatible fork) | `localhost:6379` on `13.206.225.80` | Live, deployed 2026-07-11 | Bind `127.0.0.1` only, no security group change needed. Caches alert counts (60s), risk metrics (30min), portfolio summary/positions (5min). See Task 6.2 writeup below. |
 
 **AWS account note**: this infra lives in account `301276846405` (alias `aws-adarsh-lavanya`), not the local CLI's default profile — use `--profile lavanya`. See `aws_deployment.md` memory for full detail.
 
@@ -97,11 +98,16 @@ Built a full Lambda container-image pipeline for this job (Dockerfile with msodb
   - Deployed bound to the **admin** identity (single shared identity for the whole SSE server — see `AUTH.md` for why per-caller auth wasn't built for this transport). Port 8002 opened publicly on the security group, matching the access pattern the old Flink EC2 deployment had.
   - Verified with a real MCP protocol client (not just an HTTP status check): connected via SSE, listed all 8 tools, called `list_portfolios` and confirmed exactly 50 content blocks returned (i.e., all 50 portfolios, correct for the admin identity).
   - Final memory state with all three services running: 665MB used of 1.9GB, 1.0GB still available.
+- **2026-07-11 (Task 6.2)**: Deployed Redis caching — as **Valkey** (Redis-compatible fork), self-hosted on the ChromaDB EC2 alongside ChromaDB + backend + MCP.
+  - `dnf search redis` turned up nothing in AL2023's default repos; `valkey` (v9.0.4) and the older `redis6` (v6.2.20) were both available. Chose Valkey — actively maintained, AWS's current recommendation, fully wire-compatible with the Python `redis` client already in `requirements.txt`.
+  - Default config binds `127.0.0.1` only, `protected-mode yes` — no security group change needed, unlike MCP. Backend connects via `localhost:6379` on the same box.
+  - Caches: unread alert count (60s), risk metrics (30min — see Task 6.4's note above on why not the originally-planned 24h), portfolio summary/positions (5min). Reusable `get_or_set()`/`invalidate()` wrapper in `backend/services/cache.py`, graceful fallback if Redis is unreachable.
+  - Verified for real, not just "endpoint returns 200": confirmed cache keys actually appear in Valkey with correct TTLs (`valkey-cli keys`/`ttl`), confirmed `mark_read` genuinely invalidates the alert-count key (count updated 10→9 immediately, not after the 60s TTL), confirmed full page renders (dashboard, portfolio detail, Risk Analytics tab) still work correctly end-to-end in a real browser against the live site post-deploy.
+  - Final memory with all four services (ChromaDB, backend, MCP, Valkey) running: Valkey itself uses ~3MB idle — negligible next to the other three.
 
 ---
 
 ## Resume Steps for Next Session
 1. **Retire the stale MCP server on the Flink EC2** — it still has the pre-auth `mcp_server.py` code sitting there (last pulled 2026-07-06). Not currently running (nohup processes don't survive a stop/start cycle, and the box has been stopped/started multiple times since), but worth an explicit check next time that box is up, and either update or remove it so there's no confusion about which MCP endpoint is authoritative. The ChromaDB EC2 (`http://13.206.225.80:8002/sse`) is now the live one.
-2. **Redis** (Task 6.2) — install on the ChromaDB EC2 (now t3.small, ~1GB headroom after ChromaDB+backend+MCP). Was already the planned location per `plan.md`'s Option A; capacity was the open question, now resolved by the resize.
-3. Confirm `finsight-daily-price-update`'s first real automated fire succeeded (16:00 ET) — check `/var/log/finsight_price_update.log` on the EC2 and/or `Securities.current_price` timestamps.
-4. Rest of Phase 6 (Dockerization, real CI/CD for the backend — frontend now auto-deploys, backend still manual) — see `plan.md`.
+2. Confirm `finsight-daily-price-update`'s first real automated fire succeeded (16:00 ET) — check `/var/log/finsight_price_update.log` on the EC2 and/or `Securities.current_price` timestamps.
+3. Rest of Phase 6 (Dockerization, real CI/CD for the backend — frontend now auto-deploys, backend still manual) — see `plan.md`.
