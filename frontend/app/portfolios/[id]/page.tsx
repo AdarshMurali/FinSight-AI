@@ -97,7 +97,7 @@ export default function PortfolioPage() {
     try {
       const [data, alerts, history] = await Promise.all([
         getRiskMetrics(pid),
-        getAlerts({ portfolio_id: pid, limit: 20 }),
+        getAlerts({ portfolio_id: pid, limit: 20, unread_only: true }),
         getRiskHistory(pid, 30),
       ]);
       setRiskData(data);
@@ -117,7 +117,7 @@ export default function PortfolioPage() {
 
   const handleDismissAllRiskAlerts = async () => {
     await markAllAlertsRead(pid);
-    setRiskAlerts(prev => prev.map(a => ({ ...a, is_read: true })));
+    setRiskAlerts([]);
   };
 
   useEffect(() => {
@@ -392,7 +392,7 @@ export default function PortfolioPage() {
                   <Bell size={11} className="text-white" />
                   <span className="text-white text-[10px] font-bold tracking-[0.18em] uppercase">Risk Alerts</span>
                   <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(0,0,0,0.30)", color: "#fff" }}>
-                    {riskAlerts.filter(a => !a.is_read).length} unread
+                    {riskAlerts.length} unread
                   </span>
                 </div>
                 <button onClick={handleDismissAllRiskAlerts} className="flex items-center gap-1 text-white/70 hover:text-white text-[9px] tracking-wider transition-colors">
@@ -407,7 +407,7 @@ export default function PortfolioPage() {
                     <div
                       key={a.alert_id}
                       className="flex items-start gap-3 px-4 py-3 bg-[#0D0D0D] transition-colors"
-                      style={{ borderLeft: `3px solid ${a.is_read ? "transparent" : color}`, opacity: a.is_read ? 0.5 : 1 }}
+                      style={{ borderLeft: `3px solid ${color}` }}
                     >
                       <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: color }} />
                       <div className="flex-1 min-w-0">
@@ -419,11 +419,9 @@ export default function PortfolioPage() {
                         </div>
                         <p className="text-[9px] leading-relaxed" style={{ color: "#7A5030" }}>{a.message}</p>
                       </div>
-                      {!a.is_read && (
-                        <button onClick={() => handleDismissRiskAlert(a.alert_id)} className="shrink-0 mt-0.5" title="Dismiss">
-                          <X size={11} style={{ color: "#5A3820" }} className="hover:text-[#FF8000] transition-colors" />
-                        </button>
-                      )}
+                      <button onClick={() => handleDismissRiskAlert(a.alert_id)} className="shrink-0 mt-0.5" title="Dismiss">
+                        <X size={11} style={{ color: "#5A3820" }} className="hover:text-[#FF8000] transition-colors" />
+                      </button>
                     </div>
                   );
                 })}
