@@ -27,9 +27,12 @@ function fmt(n: number | null | undefined) {
   return `$${Number(n).toLocaleString()}`;
 }
 
+// ytd_return (and volatility, above) come from Portfolio_Performance as a
+// fraction (0.1340 = 13.40%), unlike the WebSocket's live change_pct which
+// arrives already percentage-scaled — hence the explicit *100 here but not there.
 function pct(n: number | null | undefined) {
   if (n == null) return "—";
-  const v = Number(n);
+  const v = Number(n) * 100;
   return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
 }
 
@@ -149,9 +152,12 @@ export default function PortfolioPage() {
     const sec = p.security?.sector || "Other";
     sectorMap[sec] = (sectorMap[sec] || 0) + (Number(p.weight) || 0);
   });
+  // Position.weight is a fraction (0.558 = 55.8%) — same *100 fix as pct()/volatility
+  // above. Pie slice proportions are scale-invariant either way; this only affects
+  // the displayed legend/tooltip numbers.
   const sectorData = Object.entries(sectorMap)
     .sort((a, b) => b[1] - a[1])
-    .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(1)) }));
+    .map(([name, value]) => ({ name, value: parseFloat((value * 100).toFixed(1)) }));
 
   const latest       = performance[performance.length - 1];
   const displayValue = liveValue ?? Number(portfolio.total_value);
@@ -236,7 +242,7 @@ export default function PortfolioPage() {
         <div className="p-4 bg-[#0D0D0D]">
           <p className="text-[#F5821F] text-[9px] font-bold tracking-[0.15em] mb-2">VOLATILITY</p>
           <p className="text-2xl font-bold tabular-nums text-[#FFB300]">
-            {latest?.volatility != null ? `${Number(latest.volatility).toFixed(1)}%` : "—"}
+            {latest?.volatility != null ? `${(Number(latest.volatility) * 100).toFixed(1)}%` : "—"}
           </p>
         </div>
       </div>
@@ -360,7 +366,7 @@ export default function PortfolioPage() {
                         {fmt(Number(p.market_value))}
                       </td>
                       <td className="text-right text-[#E0E0E0] tabular-nums">
-                        {Number(p.weight).toFixed(1)}%
+                        {(Number(p.weight) * 100).toFixed(1)}%
                       </td>
                     </tr>
                   );

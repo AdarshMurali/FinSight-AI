@@ -98,7 +98,7 @@ export default function MarketEventDetail() {
                   <td className="text-[#e8e8f0] font-medium text-xs">{a.portfolio_name}</td>
                   <td className="text-right text-[#9898b0]">{a.changes_count}</td>
                   <td className={`text-right font-medium ${a.total_weight_change >= 0 ? "positive" : "negative"}`}>
-                    {a.total_weight_change >= 0 ? "+" : ""}{a.total_weight_change.toFixed(2)}%
+                    {a.total_weight_change >= 0 ? "+" : ""}{(a.total_weight_change * 100).toFixed(2)}%
                   </td>
                   <td className="text-right">
                     <Link href={`/portfolios/${a.portfolio_id}`} className="text-[#1e90ff] text-xs hover:underline">
