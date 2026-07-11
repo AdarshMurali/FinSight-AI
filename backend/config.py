@@ -3,6 +3,10 @@ from typing import List
 import os
 from urllib.parse import quote_plus
 
+from services.secrets_loader import load_aws_secrets
+
+load_aws_secrets()  # no-op unless USE_AWS_SECRETS=true; must run before Settings() below
+
 
 class Settings(BaseSettings):
     DB_SERVER: str = "localhost"
