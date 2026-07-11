@@ -1,5 +1,5 @@
 ## Project Status — FinSight AI
-**Last Updated**: 2026-07-11 (Task 6.4 — JWT auth + multi-tenant portfolio access — built and verified locally: login, REST scoping, AI chat tool dispatcher, MCP server, and WebSocket all enforce per-manager access; not yet deployed to production)
+**Last Updated**: 2026-07-11 (Fixed and deployed the Overview tab volatility/percentage display bug found while building Task 5.4)
 
 ---
 
@@ -209,7 +209,7 @@
   - `GET /api/portfolios/{id}/report` — same `require_portfolio_access` auth as every other portfolio route, not cached (deliberate, infrequent on-demand action)
   - Frontend: "EXPORT REPORT" button next to "AI INSIGHTS" on the portfolio detail page, downloads via blob
   - PDF format only — Excel deferred (lower priority, revisit if there's demand for raw-numbers-in-a-spreadsheet use case)
-  - Found (not fixed, out of scope): the portfolio Overview tab's "VOLATILITY" stat appears to show a value ~100x too small (e.g. "0.1%" vs the report's/Risk-tab's own "12-14%" for the same portfolio, same underlying field) — likely a frontend formatting bug, needs separate investigation
+  - Found while building this, fixed separately 2026-07-11: the portfolio Overview tab's "VOLATILITY" stat showed a value ~100x too small — see the dedicated bug-fix entry below.
 
 ---
 
@@ -236,6 +236,13 @@
   - **The hard edge (closed)**: `ai_tools.py`'s `execute_tool()` now takes `current_user` and checks ownership before any portfolio-scoped tool call, so the AI chat can't be used to bypass REST-level scoping via tool-calling. `mcp_server.py` resolves one identity per process from a long-lived `FINSIGHT_MCP_TOKEN` (minted via `scripts/mint_mcp_token.py`) and refuses to start without one. `/ws` authenticates at the WebSocket handshake and filters every price tick to the connection's accessible portfolios.
   - **Real bugs found while building this**: `EventImpactAnalyzer` treats an empty portfolio list as "no filter → show everything" (guarded in the two analysis endpoints that call it); hardcoded `secure=True` on cookies silently broke local HTTP testing (now `COOKIE_SECURE`, a setting); Next.js 16's `allowedDevOrigins` protection blocked the HMR websocket between `127.0.0.1`/`localhost`, causing a silent, error-free blank screen (not a code bug — just means local dev must use `localhost:3000`).
   - **Not yet done**: deploying this to the production backend (`api.fin-sightai.space` still runs the old unauthenticated build) — see `plan.md` Task 6.4 for the deployment note.
+
+- ✅ Bug fix: Overview tab volatility/percentage display — COMPLETE, deployed (2026-07-11)
+  - Root cause: `Portfolio_Performance.volatility`/`ytd_return` and `Positions.weight` are stored as decimal fractions (e.g. `0.1240` = 12.40%), but several frontend display sites called `.toFixed()` directly on them without multiplying by 100 first — values rendered ~100x too small (e.g. "0.1%" instead of "12.4%"). Confirmed via direct DB query on portfolio 1 (`volatility=0.1240, ytd_return=0.1340`) and cross-checked against the PDF report, which computed the same fields correctly.
+  - Fixed 5 spots in `frontend/app/portfolios/[id]/page.tsx` (YTD Return `pct()` helper, VOLATILITY stat, sector allocation legend, positions-tab weight column) and `frontend/app/market-events/[id]/page.tsx` (`total_weight_change` — defensive fix; its backing table `Position_Changes_Log` has 0 rows currently, so not yet visibly wrong, but same bug pattern).
+  - Swept the rest of the frontend for the same pattern and confirmed all other `.toFixed()...%` sites (VaR panel, VaR trend chart, stress test table, factor exposure R², live WebSocket price-tick `changePct`) are already correctly scaled — those fields are pre-multiplied by 100 in the backend (`risk_analytics.py`) or generated in percentage scale by the WS price simulator, so they were deliberately left untouched.
+  - Verified in a real browser session both locally and on production (`https://www.fin-sightai.space`, logged in as Sarah Chen, portfolio 1): YTD RETURN `+13.40%`, VOLATILITY `12.4%`, sector allocation `55.8%/13.8%/11.5%/11.2%`, position weights correct.
+  - Frontend-only change — no backend/EC2 deploy needed; shipped via Vercel's git auto-deploy on push to `adarsh` (commit `477794c`).
 
 ---
 
@@ -270,7 +277,7 @@
 | 5 — Advanced | ✅ Complete | 5.1 ✅ 5.2 ✅ (all 3 alert types) 5.3 ✅ 5.4 ✅ (PDF only, Excel deferred) |
 | 6 — Infrastructure | 🔄 In Progress | Backend cloud deploy ✅ (6.3 partial) · 6.2 Redis/Valkey caching ✅ · 6.4 JWT auth ✅ · Dockerization, real CI/CD still pending |
 
-**Current Focus**: All of Phase 5 is now complete and deployed, including Task 5.4 (PDF report generation) as of 2026-07-11. The ChromaDB EC2 runs four services together (ChromaDB, backend, MCP server, Valkey) after being resized t3.micro → t3.small to fit them; the MCP server was also relocated there from the market-hours-only Flink EC2. Next: retire the stale pre-auth MCP server still sitting on the Flink EC2, real CI/CD, Dockerization, and check the Overview tab's volatility display discrepancy found while building the report.
+**Current Focus**: All of Phase 5 is now complete and deployed, including Task 5.4 (PDF report generation) as of 2026-07-11. The Overview tab volatility/percentage display bug found while building the report is now fixed and deployed (see dedicated entry above). The ChromaDB EC2 runs four services together (ChromaDB, backend, MCP server, Valkey) after being resized t3.micro → t3.small to fit them; the MCP server was also relocated there from the market-hours-only Flink EC2. Next: retire the stale pre-auth MCP server still sitting on the Flink EC2, real CI/CD, Dockerization.
 
 **Known Runtime Issues**:
 - ChromaDB container not running locally → `search_market_context` returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)
