@@ -204,7 +204,12 @@
   - Verified in browser: chart renders, WARN reference line visible, both VaR lines plotted correctly
 
 - ⏳ Task 5.2b: ChromaDB Data Retention — OPTIONAL (only needed when market_news > ~50K docs)
-- ⏳ Task 5.4 (was 5.3 in original plan): Report Generation (PDF/Excel, AI commentary) — PENDING
+- ✅ Task 5.4 (was 5.3 in original plan): Report Generation — COMPLETE (2026-07-11)
+  - `backend/services/report_generator.py` — packages already-computed data (portfolio overview, latest `Risk_Metrics` row, top 15 positions, last 8 alerts) plus a fresh AI commentary paragraph (`AIPortfolioExplainer.quick_summary()`, gpt-4o-mini) into a PDF via `reportlab` (pure Python, no system deps — deliberate given the mcp/Starlette dependency conflict hit earlier this session)
+  - `GET /api/portfolios/{id}/report` — same `require_portfolio_access` auth as every other portfolio route, not cached (deliberate, infrequent on-demand action)
+  - Frontend: "EXPORT REPORT" button next to "AI INSIGHTS" on the portfolio detail page, downloads via blob
+  - PDF format only — Excel deferred (lower priority, revisit if there's demand for raw-numbers-in-a-spreadsheet use case)
+  - Found (not fixed, out of scope): the portfolio Overview tab's "VOLATILITY" stat appears to show a value ~100x too small (e.g. "0.1%" vs the report's/Risk-tab's own "12-14%" for the same portfolio, same underlying field) — likely a frontend formatting bug, needs separate investigation
 
 ---
 
@@ -262,10 +267,10 @@
 | 2 — Backend API | ✅ Complete | 18+ endpoints, full analytics |
 | 3 — AI/LLM | ✅ Complete | GPT-4o, RAG, agentic chat (3.4a), FastMCP server (3.4b) |
 | 4 — Frontend | ✅ Complete | All 3 tasks done (4.1, 4.2, 4.3) |
-| 5 — Advanced | 🔄 In Progress | 5.1 ✅ 5.2 ✅ (all 3 alert types) 5.3 ✅ · pending: 5.4 report generation |
+| 5 — Advanced | ✅ Complete | 5.1 ✅ 5.2 ✅ (all 3 alert types) 5.3 ✅ 5.4 ✅ (PDF only, Excel deferred) |
 | 6 — Infrastructure | 🔄 In Progress | Backend cloud deploy ✅ (6.3 partial) · 6.2 Redis/Valkey caching ✅ · 6.4 JWT auth ✅ · Dockerization, real CI/CD still pending |
 
-**Current Focus**: Task 6.4 (JWT auth) and Task 6.2 (Redis caching) are both fully deployed to production and verified end-to-end. The ChromaDB EC2 now runs four services together (ChromaDB, backend, MCP server, Valkey) after being resized t3.micro → t3.small on 2026-07-11 to fit them; the MCP server was also relocated there from the market-hours-only Flink EC2. Next: retire the stale pre-auth MCP server still sitting on the Flink EC2, Task 5.4 report generation, real CI/CD, Dockerization.
+**Current Focus**: All of Phase 5 is now complete and deployed, including Task 5.4 (PDF report generation) as of 2026-07-11. The ChromaDB EC2 runs four services together (ChromaDB, backend, MCP server, Valkey) after being resized t3.micro → t3.small to fit them; the MCP server was also relocated there from the market-hours-only Flink EC2. Next: retire the stale pre-auth MCP server still sitting on the Flink EC2, real CI/CD, Dockerization, and check the Overview tab's volatility display discrepancy found while building the report.
 
 **Known Runtime Issues**:
 - ChromaDB container not running locally → `search_market_context` returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)
