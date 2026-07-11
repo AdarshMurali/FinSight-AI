@@ -28,6 +28,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from database import SessionLocal
 from models import Portfolio
+from auth import get_user_from_access_token
 from services.connection_manager import manager
 
 router = APIRouter()
@@ -38,7 +39,23 @@ logger = logging.getLogger(__name__)
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+    # Task 6.4: browsers send cookies on the WS upgrade handshake automatically
+    # (same-site) — authenticate BEFORE accept() so an unauthenticated client
+    # gets a clean rejection rather than a live, unscoped feed of every
+    # portfolio's price ticks.
+    db = SessionLocal()
+    try:
+        user = get_user_from_access_token(db, websocket.cookies.get("access_token"))
+        if not user:
+            await websocket.close(code=1008)  # policy violation
+            return
+        allowed_portfolio_ids = None if user.role == "admin" else {
+            pid for (pid,) in db.query(Portfolio.portfolio_id).filter(Portfolio.manager_id == user.user_id).all()
+        }
+    finally:
+        db.close()
+
+    await manager.connect(websocket, allowed_portfolio_ids)
     try:
         # Confirm connection immediately
         await websocket.send_text(json.dumps({
@@ -124,7 +141,7 @@ async def run_price_simulator():
                     "currency":       p.currency or "USD",
                     "strategy_type":  p.strategy_type,
                     "timestamp":      _now(),
-                })
+                }, portfolio_id=p.portfolio_id)
 
         except asyncio.CancelledError:
             raise

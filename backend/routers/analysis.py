@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any
 
 from database import get_db
+from models import User, Portfolio, MarketEvent
+from auth import get_current_user, check_portfolio_access, scope_portfolio_query
 from schemas import (
     PortfolioStateAnalysisRequest,
     PositionChangesRequest,
@@ -29,12 +31,48 @@ from services.ai_chat_service import AIChatService, SUGGESTED_QUESTIONS
 router = APIRouter()
 
 
+def _require_access(db: Session, current_user: User, portfolio_id: int) -> None:
+    """analysis.py's requests carry portfolio_id in the POST body, not the URL path,
+    so require_portfolio_access (a path-param dependency) doesn't apply directly —
+    same ownership check, called explicitly instead."""
+    if not check_portfolio_access(db, current_user, portfolio_id):
+        raise HTTPException(status_code=403, detail="Not authorized for this portfolio")
+
+
+def _accessible_portfolio_ids(db: Session, current_user: User, requested_ids) -> list:
+    """Intersect a requested portfolio_ids list (or 'all' when None) with what the
+    user can access. IMPORTANT: the caller must treat an empty return as "nothing to
+    show", never pass it straight to EventImpactAnalyzer — that class treats an empty
+    list as falsy and falls back to querying every portfolio in the database."""
+    if requested_ids:
+        return [
+            pid for (pid,) in
+            scope_portfolio_query(db.query(Portfolio.portfolio_id), current_user)
+            .filter(Portfolio.portfolio_id.in_(requested_ids)).all()
+        ]
+    return [pid for (pid,) in scope_portfolio_query(db.query(Portfolio.portfolio_id), current_user).all()]
+
+
+def _empty_event_impact_response(db: Session, event_id: int) -> Dict[str, Any]:
+    event = db.query(MarketEvent).filter(MarketEvent.event_id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail=f"Market event {event_id} not found")
+    return {
+        "event_id": event_id, "event_title": event.event_title,
+        "event_date": event.event_date.isoformat(), "event_type": event.event_type,
+        "impact_level": event.impact_level, "affected_sectors": [], "affected_regions": [],
+        "portfolios_analyzed": 0, "portfolios_affected": 0, "portfolio_impacts": [],
+    }
+
+
 @router.post("/portfolio-state", response_model=Dict[str, Any])
 def analyze_portfolio_state(
     request: PortfolioStateAnalysisRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Analyze current portfolio state and provide insights"""
+    _require_access(db, current_user, request.portfolio_id)
     analyzer = PortfolioAnalyzer(db)
     analysis = analyzer.analyze_portfolio_state(
         portfolio_id=request.portfolio_id,
@@ -46,9 +84,11 @@ def analyze_portfolio_state(
 @router.post("/position-changes", response_model=Dict[str, Any])
 def detect_position_changes(
     request: PositionChangesRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Detect significant position changes over a time period"""
+    _require_access(db, current_user, request.portfolio_id)
     detector = PositionChangeDetector(db)
     changes = detector.detect_significant_changes(
         portfolio_id=request.portfolio_id,
@@ -62,13 +102,18 @@ def detect_position_changes(
 @router.post("/event-impact", response_model=Dict[str, Any])
 def analyze_event_impact(
     request: EventImpactRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Analyze the impact of a market event on portfolios"""
+    """Analyze the impact of a market event on portfolios the user has access to"""
+    portfolio_ids = _accessible_portfolio_ids(db, current_user, request.portfolio_ids)
+    if not portfolio_ids:
+        return _empty_event_impact_response(db, request.event_id)
+
     analyzer = EventImpactAnalyzer(db)
     impact = analyzer.analyze_event_impact(
         event_id=request.event_id,
-        portfolio_ids=request.portfolio_ids
+        portfolio_ids=portfolio_ids
     )
     return impact
 
@@ -76,9 +121,11 @@ def analyze_event_impact(
 @router.post("/recommendations", response_model=Dict[str, Any])
 def get_recommendations(
     request: RecommendationRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get portfolio optimization recommendations"""
+    _require_access(db, current_user, request.portfolio_id)
     engine = RecommendationEngine(db)
     recommendations = engine.generate_recommendations(
         portfolio_id=request.portfolio_id,
@@ -93,6 +140,7 @@ def get_recommendations(
 @router.post("/ai/explain-portfolio", response_model=Dict[str, Any])
 def ai_explain_portfolio(
     request: AIPortfolioExplainRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -100,6 +148,7 @@ def ai_explain_portfolio(
     Combines structured portfolio analytics with RAG market context
     and Claude to produce a natural language explanation.
     """
+    _require_access(db, current_user, request.portfolio_id)
     try:
         explainer = AIPortfolioExplainer(db)
         return explainer.explain(
@@ -116,6 +165,7 @@ def ai_explain_portfolio(
 @router.post("/ai/narrate-changes", response_model=Dict[str, Any])
 def ai_narrate_changes(
     request: AIChangeNarrateRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -123,6 +173,7 @@ def ai_narrate_changes(
     Detects significant position changes and explains the market drivers
     using news, macro data, and earnings context from ChromaDB.
     """
+    _require_access(db, current_user, request.portfolio_id)
     try:
         narrator = AIChangeNarrator(db)
         return narrator.narrate(
@@ -140,17 +191,22 @@ def ai_narrate_changes(
 @router.post("/ai/analyze-event", response_model=Dict[str, Any])
 def ai_analyze_event(
     request: AIEventAnalyzeRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     AI-powered market event impact analysis (uses Claude Opus for deep reasoning).
     Analyzes direct exposure, second-order effects, and recommended actions.
     """
+    portfolio_ids = _accessible_portfolio_ids(db, current_user, request.portfolio_ids)
+    if not portfolio_ids:
+        event_data = _empty_event_impact_response(db, request.event_id)
+        return {"ai_assessment": "No accessible portfolios to analyze for this event.", "event_data": event_data}
     try:
         analyzer = AIEventAnalyzer(db)
         return analyzer.analyze(
             event_id=request.event_id,
-            portfolio_ids=request.portfolio_ids,
+            portfolio_ids=portfolio_ids,
             depth=request.depth,
         )
     except ValueError as e:
@@ -162,6 +218,7 @@ def ai_analyze_event(
 @router.post("/ai/recommendations", response_model=Dict[str, Any])
 def ai_recommendations(
     request: AIRecommendationRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -169,6 +226,7 @@ def ai_recommendations(
     Combines quantitative rule-based analysis with market context
     (analyst views, macro trends, news sentiment) via RAG + Claude.
     """
+    _require_access(db, current_user, request.portfolio_id)
     try:
         engine = AIRecommendationEngine(db)
         return engine.recommend(
@@ -193,6 +251,7 @@ def get_suggested_questions():
 @router.post("/ai/chat")
 def ai_chat_stream(
     request: AIChatRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -204,10 +263,17 @@ def ai_chat_stream(
         data: [DONE]\n\n
 
     The client assembles tokens into the full assistant response.
+
+    Ownership is checked twice: once here for the portfolio_id the conversation
+    starts with, and again inside execute_tool() (ai_tools.py) for every
+    portfolio_id GPT-4o's tool-calling requests mid-conversation — the LLM can
+    ask for any portfolio_id, so the second check can't be skipped.
     """
+    _require_access(db, current_user, request.portfolio_id)
+
     def event_stream():
         try:
-            service = AIChatService(db)
+            service = AIChatService(db, current_user)
             history = [
                 {"role": m.role, "content": m.content}
                 for m in (request.conversation_history or [])

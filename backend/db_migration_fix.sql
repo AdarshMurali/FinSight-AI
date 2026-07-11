@@ -956,6 +956,53 @@ INSERT INTO Market_Events (event_id, event_date, event_type, event_title, event_
 SET IDENTITY_INSERT Market_Events OFF;
 
 PRINT 'Transactions, Portfolio_Performance, and Market_Events inserted successfully.';
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- STEP 8: Users (fund managers) + Portfolios.manager_id (multi-tenant access)
+-- On a fresh install this table/column won't exist yet, so no IF NOT EXISTS
+-- guards are needed here (unlike db_migration_auth.sql, which is the script
+-- actually run against an already-populated production DB — see that file's
+-- header for why the two are kept separate).
+-- role: fund_manager | admin. Shared demo password 'FinSight2026!' — see AUTH.md.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE Users (
+    user_id         INT IDENTITY(1,1) PRIMARY KEY,
+    email           VARCHAR(255) NOT NULL UNIQUE,
+    hashed_password VARCHAR(255) NOT NULL,
+    full_name       VARCHAR(255) NOT NULL,
+    role            VARCHAR(20)  NOT NULL CHECK (role IN ('fund_manager', 'admin')),
+    created_at      DATETIME NOT NULL DEFAULT GETUTCDATE()
+);
+GO
+
+INSERT INTO Users (email, hashed_password, full_name, role) VALUES
+('sarah.chen@finsight.demo',     '$2b$12$d94X9qQeMw2TxMm8z32Hp.IhbfbXO9MCOgUAJOOjhqW8FrIgFyEii', 'Sarah Chen',     'fund_manager'),
+('james.okafor@finsight.demo',   '$2b$12$d94X9qQeMw2TxMm8z32Hp.IhbfbXO9MCOgUAJOOjhqW8FrIgFyEii', 'James Okafor',   'fund_manager'),
+('priya.patel@finsight.demo',    '$2b$12$d94X9qQeMw2TxMm8z32Hp.IhbfbXO9MCOgUAJOOjhqW8FrIgFyEii', 'Priya Patel',    'fund_manager'),
+('david.kim@finsight.demo',      '$2b$12$d94X9qQeMw2TxMm8z32Hp.IhbfbXO9MCOgUAJOOjhqW8FrIgFyEii', 'David Kim',      'fund_manager'),
+('elena.rodriguez@finsight.demo','$2b$12$d94X9qQeMw2TxMm8z32Hp.IhbfbXO9MCOgUAJOOjhqW8FrIgFyEii', 'Elena Rodriguez','fund_manager'),
+('admin@finsight.demo',          '$2b$12$d94X9qQeMw2TxMm8z32Hp.IhbfbXO9MCOgUAJOOjhqW8FrIgFyEii', 'Marcus Webb',    'admin');
+GO
+
+ALTER TABLE Portfolios ADD manager_id INT NULL;
+GO
+ALTER TABLE Portfolios ADD CONSTRAINT FK_Portfolios_Manager
+    FOREIGN KEY (manager_id) REFERENCES Users(user_id);
+GO
+
+DECLARE @sarah INT = (SELECT user_id FROM Users WHERE email = 'sarah.chen@finsight.demo');
+DECLARE @james INT = (SELECT user_id FROM Users WHERE email = 'james.okafor@finsight.demo');
+DECLARE @priya INT = (SELECT user_id FROM Users WHERE email = 'priya.patel@finsight.demo');
+DECLARE @david INT = (SELECT user_id FROM Users WHERE email = 'david.kim@finsight.demo');
+DECLARE @elena INT = (SELECT user_id FROM Users WHERE email = 'elena.rodriguez@finsight.demo');
+
+UPDATE Portfolios SET manager_id = @sarah WHERE portfolio_id BETWEEN 1  AND 10;
+UPDATE Portfolios SET manager_id = @james WHERE portfolio_id BETWEEN 11 AND 20;
+UPDATE Portfolios SET manager_id = @priya WHERE portfolio_id BETWEEN 21 AND 30;
+UPDATE Portfolios SET manager_id = @david WHERE portfolio_id BETWEEN 31 AND 40;
+UPDATE Portfolios SET manager_id = @elena WHERE portfolio_id BETWEEN 41 AND 50;
+
+PRINT 'Users seeded and Portfolios.manager_id backfilled.';
 PRINT '';
 PRINT 'Row counts:';
 SELECT 'Customers'           AS [Table], COUNT(*) AS [Rows] FROM Customers
@@ -964,5 +1011,6 @@ UNION ALL SELECT 'Securities',         COUNT(*) FROM Securities
 UNION ALL SELECT 'Positions',          COUNT(*) FROM Positions
 UNION ALL SELECT 'Transactions',       COUNT(*) FROM Transactions
 UNION ALL SELECT 'Portfolio_Performance', COUNT(*) FROM Portfolio_Performance
-UNION ALL SELECT 'Market_Events',      COUNT(*) FROM Market_Events;
+UNION ALL SELECT 'Market_Events',      COUNT(*) FROM Market_Events
+UNION ALL SELECT 'Users',              COUNT(*) FROM Users;
 

@@ -5,13 +5,22 @@ Exposes FinSight's portfolio intelligence as an MCP server.
 Any MCP-compatible client (Claude Desktop, Cursor, etc.) can connect and
 query live portfolio data, risk metrics, alerts, and market context.
 
+Auth (Task 6.4)
+----------------
+Requires FINSIGHT_MCP_TOKEN — a long-lived per-manager token minted with:
+    python scripts/mint_mcp_token.py <manager-email>
+The whole server process is bound to that one manager's identity for its
+lifetime (Claude Desktop runs one subprocess per manager, one config each) —
+every portfolio-scoped tool below checks ownership before returning data.
+Missing/invalid token = the server refuses to start, not "runs unscoped".
+
 Run modes
 ---------
   stdio (Claude Desktop):
-      python backend/mcp_server.py
+      FINSIGHT_MCP_TOKEN=<token> python backend/mcp_server.py
 
   HTTP/SSE (remote clients, Cursor):
-      python backend/mcp_server.py --transport sse --port 8002
+      FINSIGHT_MCP_TOKEN=<token> python backend/mcp_server.py --transport sse --port 8002
 
 Claude Desktop config  (~/.config/claude/claude_desktop_config.json on Mac,
                          %APPDATA%\Claude\claude_desktop_config.json on Windows):
@@ -19,20 +28,23 @@ Claude Desktop config  (~/.config/claude/claude_desktop_config.json on Mac,
       "mcpServers": {
         "finsight": {
           "command": "C:/Agentic_AI/FinSight-AI/finsightaivenv/Scripts/python.exe",
-          "args":    ["C:/Agentic_AI/FinSight-AI/backend/mcp_server.py"]
+          "args":    ["C:/Agentic_AI/FinSight-AI/backend/mcp_server.py"],
+          "env":     { "FINSIGHT_MCP_TOKEN": "<token from mint_mcp_token.py>" }
         }
       }
     }
 
-Tools exposed (8 total)
+Tools exposed (8 total) — all portfolio-scoped tools return {"error": ...}
+instead of data for a portfolio_id the token's manager doesn't own (admin
+tokens bypass this and see everything, same as the REST API / AI chat).
 -----------------------
-  list_portfolios            — all portfolios with customer, value, strategy
+  list_portfolios            — this manager's portfolios (all, for admin) with customer, value, strategy
   get_portfolio_summary      — full portfolio state: sectors, top positions, performance
   get_portfolio_positions    — positions table, optionally filtered by sector
   get_portfolio_risk         — latest VaR, stress tests, factor exposure from Risk_Metrics
   get_portfolio_alerts       — active alerts (threshold / event / ai) for a portfolio
-  search_market_context      — semantic search across ChromaDB (36K+ financial docs)
-  get_market_events          — structured events (Fed decisions, geopolitical, sectoral)
+  search_market_context      — semantic search across ChromaDB (36K+ financial docs) — reference data, unscoped
+  get_market_events          — structured events (Fed decisions, geopolitical, sectoral) — reference data, unscoped
   refresh_portfolio_risk     — trigger a fresh VaR/stress/factor computation (background)
 """
 
@@ -51,7 +63,8 @@ sys.path.insert(0, os.path.join(_backend_dir, "rag"))
 from mcp.server.fastmcp import FastMCP
 
 from database import SessionLocal
-from models import Portfolio, Customer, Position, Security, MarketEvent, Alert, RiskMetric
+from models import Portfolio, Customer, Position, Security, MarketEvent, Alert, RiskMetric, User
+from auth import decode_token
 from services.portfolio_analyzer import PortfolioAnalyzer
 from services.risk_analytics import compute_all
 from rag.query_engine import MarketRAGEngine
@@ -83,6 +96,62 @@ def _db():
     return SessionLocal()
 
 
+# ── Identity — resolved ONCE at process startup from FINSIGHT_MCP_TOKEN ────────
+# Claude Desktop runs this whole process as one manager's subprocess (one config
+# per manager), so there's no per-request auth like the REST API's cookie — the
+# entire server instance is bound to one identity for its lifetime. Every
+# portfolio-scoped tool below checks against these two globals before touching
+# real data. Deliberately fails closed: no valid token means the server won't
+# start, never "runs unscoped".
+_mcp_user_id: Optional[int] = None
+_mcp_role: Optional[str] = None
+_mcp_user_name: Optional[str] = None
+
+
+def _resolve_identity() -> None:
+    global _mcp_user_id, _mcp_role, _mcp_user_name
+    token = os.environ.get("FINSIGHT_MCP_TOKEN")
+    if not token:
+        print(
+            "[FinSight MCP] FATAL: FINSIGHT_MCP_TOKEN is not set. "
+            "Mint one with: python scripts/mint_mcp_token.py <manager-email>",
+            file=sys.stderr, flush=True,
+        )
+        sys.exit(1)
+    try:
+        payload = decode_token(token, "mcp")
+    except Exception as e:
+        print(f"[FinSight MCP] FATAL: invalid FINSIGHT_MCP_TOKEN — {e}", file=sys.stderr, flush=True)
+        sys.exit(1)
+
+    db = _db()
+    try:
+        user = db.query(User).filter(User.user_id == int(payload["sub"])).first()
+        if not user:
+            print("[FinSight MCP] FATAL: token's user no longer exists", file=sys.stderr, flush=True)
+            sys.exit(1)
+        _mcp_user_id, _mcp_role, _mcp_user_name = user.user_id, user.role, user.full_name
+    finally:
+        db.close()
+
+    print(f"[FinSight MCP] Authenticated as {_mcp_user_name} ({_mcp_role})", file=sys.stderr, flush=True)
+
+
+def _owned_portfolio(db, portfolio_id: int) -> Optional[Portfolio]:
+    """None if the current MCP identity doesn't own portfolio_id (or it doesn't exist)."""
+    q = db.query(Portfolio).filter(Portfolio.portfolio_id == portfolio_id)
+    if _mcp_role != "admin":
+        q = q.filter(Portfolio.manager_id == _mcp_user_id)
+    return q.first()
+
+
+def _accessible_portfolio_ids(db) -> Optional[List[int]]:
+    """None means admin / no restriction."""
+    if _mcp_role == "admin":
+        return None
+    return [pid for (pid,) in db.query(Portfolio.portfolio_id).filter(Portfolio.manager_id == _mcp_user_id).all()]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Tool 1: list_portfolios
 # ─────────────────────────────────────────────────────────────────────────────
@@ -95,12 +164,10 @@ def list_portfolios() :
     """
     db = _db()
     try:
-        rows = (
-            db.query(Portfolio, Customer)
-            .join(Customer, Portfolio.customer_id == Customer.customer_id)
-            .order_by(Portfolio.portfolio_id)
-            .all()
-        )
+        q = db.query(Portfolio, Customer).join(Customer, Portfolio.customer_id == Customer.customer_id)
+        if _mcp_role != "admin":
+            q = q.filter(Portfolio.manager_id == _mcp_user_id)
+        rows = q.order_by(Portfolio.portfolio_id).all()
         return [
             {
                 "portfolio_id":   p.portfolio_id,
@@ -131,6 +198,8 @@ def get_portfolio_summary(portfolio_id: int) :
     """
     db = _db()
     try:
+        if not _owned_portfolio(db, portfolio_id):
+            return {"error": f"Not authorized to access portfolio {portfolio_id}.", "portfolio_id": portfolio_id}
         analyzer = PortfolioAnalyzer(db)
         result = analyzer.analyze_portfolio_state(portfolio_id=portfolio_id)
         result.pop("region_allocation", None)
@@ -154,6 +223,8 @@ def get_portfolio_positions(portfolio_id: int, sector: str = "") :
     """
     db = _db()
     try:
+        if not _owned_portfolio(db, portfolio_id):
+            return [{"error": f"Not authorized to access portfolio {portfolio_id}."}]
         q = (
             db.query(Position, Security)
             .join(Security, Position.security_id == Security.security_id)
@@ -199,6 +270,8 @@ def get_portfolio_risk(portfolio_id: int) :
     """
     db = _db()
     try:
+        if not _owned_portfolio(db, portfolio_id):
+            return {"error": f"Not authorized to access portfolio {portfolio_id}.", "portfolio_id": portfolio_id}
         row = (
             db.query(RiskMetric)
             .filter(RiskMetric.portfolio_id == portfolio_id)
@@ -253,14 +326,20 @@ def get_portfolio_alerts(
     Get alerts for a portfolio. Alert types: threshold (VaR/stress/beta breach),
     event (market event affecting portfolio), ai (proactive GPT-4o analysis).
     Severities: critical, warning, info.
-    Pass portfolio_id=0 to get alerts across all portfolios.
+    Pass portfolio_id=0 to get alerts across all portfolios you manage.
     Pass unread_only=True to see only unread alerts.
     """
     db = _db()
     try:
         q = db.query(Alert).order_by(Alert.triggered_at.desc())
         if portfolio_id:
+            if not _owned_portfolio(db, portfolio_id):
+                return [{"error": f"Not authorized to access portfolio {portfolio_id}."}]
             q = q.filter(Alert.portfolio_id == portfolio_id)
+        else:
+            allowed = _accessible_portfolio_ids(db)
+            if allowed is not None:
+                q = q.filter(Alert.portfolio_id.in_(allowed))
         if unread_only:
             q = q.filter(Alert.is_read == 0)
         rows = q.limit(limit).all()
@@ -374,6 +453,8 @@ def refresh_portfolio_risk(portfolio_id: int) :
     """
     db = _db()
     try:
+        if not _owned_portfolio(db, portfolio_id):
+            return {"status": "error", "portfolio_id": portfolio_id, "error": f"Not authorized to access portfolio {portfolio_id}."}
         result = compute_all(db, portfolio_id)
 
         from datetime import datetime
@@ -423,6 +504,8 @@ if __name__ == "__main__":
         help="Port for SSE transport (default: 8002)",
     )
     args = parser.parse_args()
+
+    _resolve_identity()
 
     if args.transport == "sse":
         print(f"[FinSight MCP] Starting SSE server on port {args.port}", flush=True)

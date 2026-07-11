@@ -21,7 +21,14 @@ from services.portfolio_analyzer import PortfolioAnalyzer
 from services.position_detector import PositionChangeDetector
 from services.recommendation_engine import RecommendationEngine
 from rag.query_engine import MarketRAGEngine, _parse_doc_date
-from models import MarketEvent
+from models import MarketEvent, User
+from auth import check_portfolio_access
+
+# Tools that take a caller-supplied portfolio_id and therefore need an ownership
+# check before touching real data — the LLM (or a malicious prompt) could ask for
+# any portfolio_id it wants, so this can't be trusted the way a URL path param
+# scoped by require_portfolio_access is.
+_PORTFOLIO_SCOPED_TOOLS = {"get_portfolio_data", "get_position_history", "run_risk_analysis"}
 
 
 # ── OpenAI tool schemas (passed as tools=[...] in API call) ──────────────────
@@ -248,12 +255,19 @@ def _get_current_quote(ticker: str) -> dict:
 
 # ── Tool executor ─────────────────────────────────────────────────────────────
 
-def execute_tool(name: str, arguments: dict, db: Session) -> Any:
+def execute_tool(name: str, arguments: dict, db: Session, current_user: User) -> Any:
     """
     Dispatch a tool name to the right service call.
     Returns a JSON-serializable dict/list.
     Errors are caught and returned as {"error": "..."} so the LLM can react.
+
+    current_user is required (not optional) so this can never silently run
+    unscoped — every call site must have an authenticated user by this point.
     """
+    if name in _PORTFOLIO_SCOPED_TOOLS and "portfolio_id" in arguments:
+        if not check_portfolio_access(db, current_user, int(arguments["portfolio_id"])):
+            return {"error": f"Not authorized to access portfolio {arguments['portfolio_id']}."}
+
     if name == "get_portfolio_data":
         analyzer = PortfolioAnalyzer(db)
         as_of = None

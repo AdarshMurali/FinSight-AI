@@ -1,5 +1,5 @@
 ## Project Status — FinSight AI
-**Last Updated**: 2026-07-09 (FastAPI backend pushed to the cloud — reused the ChromaDB EC2, registered `fin-sightai.space` domain, nginx+HTTPS via Certbot, Vercel frontend now live at `https://www.fin-sightai.space` pointing at the new backend — see `CLOUD_MIGRATION.md` for the full writeup)
+**Last Updated**: 2026-07-11 (Task 6.4 — JWT auth + multi-tenant portfolio access — built and verified locally: login, REST scoping, AI chat tool dispatcher, MCP server, and WebSocket all enforce per-manager access; not yet deployed to production)
 
 ---
 
@@ -189,11 +189,13 @@
   - `backend/routers/risk.py` — `GET /api/risk/{id}` (latest), `POST /api/risk/{id}/refresh` (on-demand, ~10-30s), `GET /api/risk/{id}/history?days=30` (trend data)
   - Frontend Risk Analytics tab: VaR grid, 6 stress test cards, factor exposure bar chart + table, VaR trend chart
 
-- ✅ Task 5.2: Alert System — COMPLETED (threshold alerts only; event + AI alerts pending)
-  - `backend/services/alert_engine.py` — fires on VaR 95% > 2% (warning), VaR 99% > 3.5% (critical), stress < -25% (warning), stress < -40% (critical), market beta > 1.5 (warning); deduplication: one alert per title per portfolio per day
+- ✅ Task 5.2: Alert System — COMPLETED, all three alert types (2026-07-10/11)
+  - `backend/services/alert_engine.py` — threshold alerts fire on VaR 95% > 2% (warning), VaR 99% > 3.5% (critical), stress < -25% (warning), stress < -40% (critical), market beta > 1.5 (warning); dedup: one alert per title per portfolio per day
+  - **Event alerts** (`generate_event_alerts`) — bulk sector×region exposure scan across all `Market_Events`, AND semantics (not OR — an earlier version matched ~90% of every portfolio on any US-tagged event, since `event_analyzer.py`'s `_parse_json_field` has been silently broken since it shipped: `affected_sectors`/`affected_regions` are stored as comma-separated strings, not JSON, so it always returned `[]`). Dedup once-per-event-per-portfolio (not per-day) since events are static, not a live feed. 290 alerts live in production.
+  - **AI-generated alerts** (`generate_ai_alert_for_portfolio`) — GPT-4o-mini reviews top holdings + RAG context daily, flags only a specific dated catalyst (never bare concentration — every portfolio here is concentrated by construction with only 4-5 positions, so an early version flagged 48/50 portfolios on generic commentary; tightened prompt brought it to a defensible ~4-8%). Dedup once per portfolio per day, checked before the LLM call. ~$0.0075/day for 50 portfolios.
+  - Both wired into `risk_job.py`'s daily run alongside threshold alerts.
   - `backend/routers/alerts.py` — `GET /api/alerts`, `GET /api/alerts/unread-count`, `PATCH /api/alerts/{id}/read`, `PATCH /api/alerts/read-all`
-  - Frontend: Sidebar bell with red unread badge (polls 60s), slide-out panel; inline alert panel on Risk tab
-  - **Pending (5.2 sub-items)**: Event alerts (Market_Events → sector exposure scan) and AI-generated alerts (GPT-4o proactive analysis) — column exists in model, no engine yet
+  - Frontend: Sidebar bell with red unread badge (polls 60s), slide-out panel; inline alert panel on Risk tab — no frontend changes needed for the new alert types (`alert_type` was already scoped as `"threshold" | "event" | "ai"` in the TS type, styling keys off `severity` not `alert_type`)
 
 - ✅ Task 5.3: Risk Trend Visualization — COMPLETED (2026-07-03)
   - `GET /api/risk/{id}/history?days=30` — returns chronological array of `{computed_at, price_date, var_95_1d_pct, var_99_1d_pct, stress_worst_pct}` from `Risk_Metrics` table
@@ -218,6 +220,14 @@
   - `systemd` service (`finsight-backend.service`) — auto-restart on crash/reboot, unlike the `nohup` pattern used for the MCP server
   - Deploy method: `git sparse-checkout` (backend/ only) via a read-only GitHub Deploy Key, manual `git pull` + `systemctl restart` for updates — real CI/CD (GitHub Actions) still not built
   - Full writeup, all bugs found/fixed, and verification steps: see `CLOUD_MIGRATION.md`
+
+- ✅ Task 6.4: JWT Auth + Multi-Tenant Portfolio Access — COMPLETE, local only (2026-07-11)
+  - **Data model**: `Users` table + `Portfolios.manager_id` FK, via a new additive `db_migration_auth.sql` (not by re-running `db_migration_fix.sql` — that deletes/recreates `Portfolios`, which would violate the FK from `Alerts`/`Risk_Metrics` and wipe the accumulated alert/risk history built up in Tasks 5.1/5.2). 5 demo managers (~10 portfolios each) + 1 admin — see `AUTH.md` for credentials.
+  - **Backend**: `backend/auth.py` (bcrypt password hashing, PyJWT access+refresh tokens in httpOnly cookies, `get_current_user`/`require_portfolio_access`/`check_portfolio_access`/`scope_portfolio_query`), `routers/auth.py` (login/refresh/logout/me), all 6 routers retrofitted (`portfolios`, `risk`, `alerts`, `analysis`, `market_events`, `securities`). CORS switched from `allow_origins=["*"]` to an explicit list + `allow_credentials=True`.
+  - **Frontend**: `/login` page, `AuthContext`, `apiFetch` sends `credentials: 'include'`, Sidebar shows logged-in manager + logout — no changes needed to the 4 pages that list portfolios, since the backend scoping does the work.
+  - **The hard edge (closed)**: `ai_tools.py`'s `execute_tool()` now takes `current_user` and checks ownership before any portfolio-scoped tool call, so the AI chat can't be used to bypass REST-level scoping via tool-calling. `mcp_server.py` resolves one identity per process from a long-lived `FINSIGHT_MCP_TOKEN` (minted via `scripts/mint_mcp_token.py`) and refuses to start without one. `/ws` authenticates at the WebSocket handshake and filters every price tick to the connection's accessible portfolios.
+  - **Real bugs found while building this**: `EventImpactAnalyzer` treats an empty portfolio list as "no filter → show everything" (guarded in the two analysis endpoints that call it); hardcoded `secure=True` on cookies silently broke local HTTP testing (now `COOKIE_SECURE`, a setting); Next.js 16's `allowedDevOrigins` protection blocked the HMR websocket between `127.0.0.1`/`localhost`, causing a silent, error-free blank screen (not a code bug — just means local dev must use `localhost:3000`).
+  - **Not yet done**: deploying this to the production backend (`api.fin-sightai.space` still runs the old unauthenticated build) — see `plan.md` Task 6.4 for the deployment note.
 
 ---
 
@@ -249,10 +259,10 @@
 | 2 — Backend API | ✅ Complete | 18+ endpoints, full analytics |
 | 3 — AI/LLM | ✅ Complete | GPT-4o, RAG, agentic chat (3.4a), FastMCP server (3.4b) |
 | 4 — Frontend | ✅ Complete | All 3 tasks done (4.1, 4.2, 4.3) |
-| 5 — Advanced | 🔄 In Progress | 5.1 ✅ 5.2 ✅ (threshold) 5.3 ✅ · pending: 5.2 event/AI alerts |
-| 6 — Infrastructure | 🔄 In Progress | Backend cloud deploy ✅ (6.3 partial) · Redis, Dockerization, real CI/CD, JWT auth still pending |
+| 5 — Advanced | 🔄 In Progress | 5.1 ✅ 5.2 ✅ (all 3 alert types) 5.3 ✅ · pending: 5.4 report generation |
+| 6 — Infrastructure | 🔄 In Progress | Backend cloud deploy ✅ (6.3 partial) · 6.4 JWT auth ✅ (local only) · Redis, Dockerization, real CI/CD still pending |
 
-**Current Focus**: FastAPI backend is now live on AWS at `https://api.fin-sightai.space`, and the Vercel frontend (`https://www.fin-sightai.space`) points at it — the biggest remaining "still local" item from `CLOUD_MIGRATION.md` is done. All 5 daily/always-on cloud pieces (Azure SQL, ChromaDB EC2, Flink/Kafka EC2, backend, frontend) are live; only the Flink EC2 is market-hours-only by design. Next: confirm the frontend footer-label fix (commit `83a860f`) went live via a manual Vercel redeploy, then move to remaining Phase 5/6 items — 5.2 event/AI alerts, JWT auth (Task 6.4), real CI/CD, Redis caching.
+**Current Focus**: Task 6.4 (JWT auth + multi-tenant portfolio access) is built and verified end-to-end locally — login, REST scoping, AI chat tool dispatcher, MCP server, and WebSocket all enforce per-manager access, with the full verification matrix (401/403/200/scoped-list/admin-bypass) passing against production Azure SQL and a real browser. **Not yet deployed** — `api.fin-sightai.space` still runs the old unauthenticated build, and the live MCP server on the Flink EC2 will refuse to restart without a `FINSIGHT_MCP_TOKEN` once redeployed (by design — fails closed). Next: deploy Task 6.4 to production, then remaining Phase 5/6 items — 5.4 report generation, real CI/CD, Redis caching, Dockerization.
 
 **Known Runtime Issues**:
 - ChromaDB container not running locally → `search_market_context` returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)

@@ -28,7 +28,8 @@ try:
     from database import SessionLocal, engine, Base
     from models import Portfolio, RiskMetric, Alert
     from services.risk_analytics import compute_all
-    from services.alert_engine import run_alerts_for_portfolio
+    from services.alert_engine import run_alerts_for_portfolio, run_event_alerts, generate_ai_alert_for_portfolio
+    from services.llm_service import LLMService
 except Exception:
     logger.exception("RiskJob RUN FAILED during import")
     logger.info(f"===== RiskJob RUN ENDED (FAILED) — {time.time() - _START_TIME:.1f}s =====")
@@ -87,6 +88,8 @@ def run():
     logger.info(f"[RiskJob] Starting — {len(portfolios)} portfolios")
 
     success, failed, total_alerts = 0, 0, 0
+    ai_llm = LLMService()
+    ai_alert_count = 0
     for pid, pname in portfolios:
         db = SessionLocal()
         try:
@@ -94,13 +97,35 @@ def run():
             save_result(db, pid, result)
             n = run_alerts_for_portfolio(db, pid, pname)
             total_alerts += n
-            logger.info(f"[RiskJob] Portfolio {pid} done — {n} alert(s) generated")
+
+            ai_alert = generate_ai_alert_for_portfolio(db, pid, pname, llm=ai_llm)
+            if ai_alert:
+                ai_alert_count += 1
+                total_alerts += 1
+
+            logger.info(f"[RiskJob] Portfolio {pid} done — {n} threshold alert(s), {1 if ai_alert else 0} AI alert(s)")
             success += 1
         except Exception as e:
             logger.error(f"[RiskJob] Portfolio {pid} FAILED: {e}")
             failed += 1
         finally:
             db.close()
+
+    ai_usage = ai_llm.get_usage_stats()
+    logger.info(
+        f"[RiskJob] AI alerts — {ai_alert_count} generated, "
+        f"${ai_usage['total_cost_usd']:.4f} spent across {ai_usage['calls']} calls"
+    )
+
+    db = SessionLocal()
+    try:
+        event_alert_count = run_event_alerts(db)
+        total_alerts += event_alert_count
+        logger.info(f"[RiskJob] Event alerts — {event_alert_count} generated")
+    except Exception as e:
+        logger.error(f"[RiskJob] Event alert scan FAILED: {e}")
+    finally:
+        db.close()
 
     logger.info(f"[RiskJob] Complete — {success} succeeded, {failed} failed, {total_alerts} alerts generated")
 

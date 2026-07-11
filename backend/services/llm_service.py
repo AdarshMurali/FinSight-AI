@@ -23,6 +23,7 @@ MODEL_ROUTING: dict[str, str] = {
     "analysis":        "gpt-4o",       # portfolio explanations, narratives
     "recommendations": "gpt-4o",       # rebalancing suggestions
     "deep":            "gpt-4o",       # complex event / risk analysis
+    "ai_alert":        "gpt-4o-mini",  # daily proactive risk scan, runs across all portfolios — cost-sensitive
 }
 
 # Approximate USD per 1M tokens (OpenAI list pricing)
@@ -71,10 +72,13 @@ class LLMService:
         task_type: str = "analysis",
         system_prompt: Optional[str] = None,
         max_tokens: int = 1500,
+        json_mode: bool = False,
     ) -> str:
         """
         Call the appropriate GPT model for the given task type.
         Returns the text response. Tracks tokens and cost internally.
+        json_mode=True requests OpenAI's strict JSON response format (the word
+        "json" must appear in prompt or system_prompt — enforced by the API).
         """
         model = MODEL_ROUTING.get(task_type, MODEL_ROUTING["analysis"])
         system = system_prompt or PromptLibrary.system_prompt(task_type)
@@ -87,6 +91,7 @@ class LLMService:
                 {"role": "system", "content": system},
                 {"role": "user",   "content": prompt},
             ],
+            **({"response_format": {"type": "json_object"}} if json_mode else {}),
         )
         latency = time.time() - t0
 
@@ -226,6 +231,24 @@ class PromptLibrary:
                 "Provide deep, nuanced analysis that considers second-order effects, sector correlations, "
                 "and historical precedents. Reference specific market data and events when available."
             ),
+            "ai_alert": (
+                "You are a proactive risk-monitoring analyst for a hedge fund, scanning one portfolio per call, "
+                "once per day. Every portfolio you see holds only 4-5 positions, so having a large weight in one "
+                "position is TRUE OF EVERY PORTFOLIO BY CONSTRUCTION — it is never, by itself, a valid reason to "
+                "alert. The bar is: would a portfolio manager who already knows their own holdings learn something "
+                "NEW today? Only flag if the market context contains a SPECIFIC, dated, negative-or-materially-"
+                "uncertain development — an earnings miss, a downgrade, a regulatory action, a named volatility "
+                "event, litigation, a guidance cut — tied to one of the listed top holdings, that is recent enough "
+                "to be actionable today. Restating 'this position is X% of the portfolio' or a vague market mood "
+                "('bearish sentiment', 'caution amid volatility') without a specific named event is NOT sufficient — "
+                "return alert_worthy: false in that case, even if a position is heavily concentrated. Most days, "
+                "for most portfolios, there will be nothing new to report — that is the expected, correct outcome, "
+                "not a failure. Never invent news; only cite what's literally present in the context. "
+                "Respond with ONLY a valid JSON object, no markdown fencing, no commentary, matching exactly: "
+                '{"alert_worthy": boolean, "severity": "critical"|"warning"|"info", '
+                '"title": string (max 100 chars), "message": string (2-3 sentences citing the specific dated event)}. '
+                'If nothing is alert-worthy: {"alert_worthy": false}.'
+            ),
         }
         return prompts.get(task_type, prompts["analysis"])
 
@@ -341,3 +364,23 @@ Provide enhanced recommendations that:
 5. Prioritize by expected risk-adjusted impact
 
 Format as clear, actionable bullet points grouped by urgency (Immediate / Near-term / Strategic)."""
+
+    @staticmethod
+    def ai_alert_scan(portfolio_data: dict, top_positions: list, rag_context: str) -> str:
+        positions_summary = "\n".join(
+            f"  - {p['ticker']} ({p['sector']}): {p['weight']:.1%} of portfolio"
+            for p in top_positions
+        )
+        return f"""PORTFOLIO: {portfolio_data.get('portfolio_name')}
+Total Value: ${portfolio_data.get('total_value', 0):,.0f}
+Sector Allocation: {portfolio_data.get('sector_allocation')}
+Largest Single Position: {portfolio_data.get('concentration_risk', {}).get('largest_position', 0):.1%}
+Top 5 Positions Combined: {portfolio_data.get('concentration_risk', {}).get('top_5_positions', 0):.1%}
+
+TOP HOLDINGS:
+{positions_summary}
+
+CURRENT MARKET CONTEXT (recent news, volatility events, macro data):
+{rag_context}
+
+Evaluate this portfolio now. Respond with the JSON object described in your instructions."""

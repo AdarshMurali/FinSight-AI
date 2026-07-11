@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import test_connection, engine
-from routers import portfolios, securities, market_events, analysis
+from routers import portfolios, securities, market_events, analysis, auth
 from routers.ws import router as ws_router, run_price_simulator, run_kafka_consumer
 from routers.risk import router as risk_router, ensure_table
 from routers.alerts import router as alerts_router, ensure_table as ensure_alerts_table
@@ -73,13 +73,14 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,  # required for the httpOnly JWT cookie (Task 6.4) — wildcard origins are incompatible with credentialed requests by browser spec, so this can no longer be "*"
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ── Routers ───────────────────────────────────────────────────────────────────
+app.include_router(auth.router,          prefix="/auth",              tags=["Auth"])
 app.include_router(portfolios.router,    prefix="/api/portfolios",    tags=["Portfolios"])
 app.include_router(securities.router,    prefix="/api/securities",    tags=["Securities"])
 app.include_router(market_events.router, prefix="/api/market-events", tags=["Market Events"])

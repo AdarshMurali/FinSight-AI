@@ -887,8 +887,21 @@ The history is being silently built up and not yet used. This task surfaces that
 
 ---
 
-#### Task 6.4: Authentication & Multi-Tenant Portfolio Access (found/scoped 2026-07-07)
+#### Task 6.4: Authentication & Multi-Tenant Portfolio Access ✅ COMPLETE (scoped 2026-07-07, built 2026-07-11)
 **Goal**: When JWT auth is added, don't just gate the API — make each fund manager see only the portfolios (and their customers) they actually manage, instead of all 50. This is a real-world multi-tenant access control pattern, not just a login screen.
+
+**What was built** (all 4 phases, each verified live against production Azure SQL / a real browser, not just imported):
+1. **Data model** — `Users` table + `Portfolios.manager_id` FK, migrated via a new additive `db_migration_auth.sql` (NOT by re-running `db_migration_fix.sql`, which deletes/recreates `Portfolios` and would have violated the FK from `Alerts`/`Risk_Metrics`, destroying the accumulated alert/risk history). 5 demo fund managers (~10 portfolios each) + 1 admin, documented in `AUTH.md`.
+2. **Backend core** — `backend/auth.py` (`hash_password`/`verify_password` via `bcrypt`, JWT access+refresh via `PyJWT`, `get_current_user`, `require_portfolio_access`, `check_portfolio_access`, `scope_portfolio_query`), `routers/auth.py` (login/refresh/logout/me), all 6 routers retrofitted. CORS switched from `allow_origins=["*"]` to the explicit origin list + `allow_credentials=True` (required for the httpOnly cookie).
+3. **Frontend** — `/login` page, `AuthContext`, `apiFetch` sends `credentials: 'include'`, Sidebar shows the logged-in manager + logout. Existing pages needed zero changes — the portfolio list narrows automatically once the backend scopes it.
+4. **The AI tool dispatcher + MCP server + WebSocket** — the part flagged below as easy to get wrong, closed: `ai_tools.py`'s `execute_tool()` now takes `current_user` and checks ownership before every portfolio-scoped tool call; `mcp_server.py` resolves one identity per process from a long-lived `FINSIGHT_MCP_TOKEN` (minted via `scripts/mint_mcp_token.py`) and fails closed if missing; `/ws` authenticates at the handshake (rejects with no valid cookie) and filters each price tick to the connection's accessible portfolios.
+
+**Bugs found and fixed along the way** (not hypothetical — each one reproduced against real data before being fixed):
+- `EventImpactAnalyzer` treats an empty portfolio list as "no filter → show everything" — a manager whose requested IDs didn't intersect their own access would've seen every portfolio's data. Guarded in both `/analysis/event-impact` and `/analysis/ai/analyze-event`.
+- Hardcoded `secure=True` on the auth cookies silently blocked all local HTTP testing (`Secure` cookies are never sent over plain HTTP, by curl or any real browser — `COOKIE_SECURE` is now a setting, off in dev `.env`, on in production).
+- Next.js 16's new `allowedDevOrigins` protection blocked the HMR websocket between `127.0.0.1` and `localhost`, silently preventing the whole client bundle from hydrating — no console error, just a permanently blank screen. Not a code bug; just means local dev must be accessed via `localhost:3000`.
+
+**Deployment note**: this is local code only — the production backend (`api.fin-sightai.space`) and its `.env` have not been updated, and the live AWS MCP server will need `FINSIGHT_MCP_TOKEN` set before its next restart or it will refuse to start (by design — fail closed).
 
 **Why this matters**: Today there is no concept of "who is logged in" anywhere in the schema — `Customers` are the institutions being managed, not the people managing them. Bolting JWT on without also scoping data access would just add a login page in front of the same unrestricted 50-portfolio view.
 
@@ -1008,7 +1021,7 @@ These were identified as gaps that add resume value or practical robustness. Rev
 
 | Item | Priority | Notes |
 |---|---|---|
-| **JWT Auth + Multi-Tenant Access** | High | Currently zero auth — any reviewer can hit the public API. See Task 6.4 for the full plan: not just login, but scoping each fund manager to only their own portfolios (data model + API + AI chat/MCP enforcement). |
+| **JWT Auth + Multi-Tenant Access** | ✅ Done (local) | See Task 6.4 — built and verified locally 2026-07-11. Not yet deployed to production (`api.fin-sightai.space` still runs the old unauthenticated build). |
 | **Langfuse (LLM tracing)** | High | Free tier. Tracks every GPT-4o call — tokens, latency, tool calls, cost. 20-minute add. Strong resume signal for LLM engineering maturity. |
 | **Rate limiting** (`slowapi`) | Medium | One-liner FastAPI middleware. Prevents API abuse on public demo. |
 | **Prometheus + Grafana** | Medium | Observability story for resume. Both free/open-source, can run on EC2. Shows production-readiness mindset. |
@@ -1210,5 +1223,18 @@ load_secrets("finsight/prod")  # call before app init
 ---
 
 **Created**: 2026-06-14
-**Last Updated**: 2026-07-09
-**Status**: Tasks 5.1, 5.2, 5.3, 3.4b (FastMCP + hosted on AWS EC2) complete. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend now live at `https://www.fin-sightai.space`. Task 6.4 (JWT + multi-tenant access) scoped, not started. Pending: 5.2 event/AI alerts, real CI/CD, Redis caching, Dockerization, JWT auth.
+**Last Updated**: 2026-07-11
+**Status**: Tasks 5.1, 5.2 (incl. event + AI alerts), 5.3, 3.4b (FastMCP + hosted on AWS EC2), 6.4 (JWT + multi-tenant access, local only) complete. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend now live at `https://www.fin-sightai.space`. Task 6.4 built and verified locally 2026-07-11, not yet deployed to production. Pending: deploy 6.4, real CI/CD, Redis caching, Dockerization.
+
+---
+
+## Appendix: Ideas Not Part of the Initial Design (found 2026-07-10, review later)
+
+These surfaced from a pending-work review on 2026-07-10 — none were part of the original phase plan above. Not scoped or scheduled yet; revisit and decide before implementing any of them.
+
+1. **LLM cost dashboard** — `llm_service.py` already tracks every call via `UsageRecord`/`get_usage_stats()`, but nothing surfaces it in the UI. Likely low effort since the data collection already exists.
+2. **Portfolio comparison page** (`/compare`) — was in the original Task 4.1 page list but never built. Multi-portfolio + benchmark comparison.
+3. **Custom what-if stress scenarios** — let a user define their own shock (e.g. "oil -30% + rates +100bps") instead of only the 6 fixed scenarios in `risk_analytics.py`.
+4. **Alert delivery beyond in-app** — Slack webhook or email for `severity='critical'` alerts, using existing trigger points in `alert_engine.py`.
+5. **WebSocket auth gap** — `/ws` currently has zero auth; anyone connected sees live price ticks for all 50 portfolios. Should be bundled into Task 6.4 (JWT) rather than left as an afterthought.
+6. **Compliance / audit trail** — access log (user, portfolio, endpoint, timestamp). Pairs naturally with the new `Users` table planned in Task 6.4; relevant differentiator for the hedge-fund domain.

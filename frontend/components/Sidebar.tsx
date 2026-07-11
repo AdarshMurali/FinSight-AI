@@ -2,8 +2,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboard, BarChart3, Sparkles, Radio, TrendingUp, MessageSquare, Bell, X, CheckCheck } from "lucide-react";
+import { LayoutDashboard, BarChart3, Sparkles, Radio, TrendingUp, MessageSquare, Bell, X, CheckCheck, LogOut } from "lucide-react";
 import { getAlerts, getUnreadCount, markAlertRead, markAllAlertsRead, AlertItem } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 const nav = [
   { href: "/",              label: "DASHBOARD",   icon: LayoutDashboard },
@@ -30,6 +31,7 @@ function timeAgo(iso: string) {
 
 export default function Sidebar() {
   const path = usePathname();
+  const { user, logout } = useAuth();
   const [panelOpen,   setPanelOpen]   = useState(false);
   const [alerts,      setAlerts]      = useState<AlertItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -175,6 +177,33 @@ export default function Sidebar() {
             <span className="text-[9px]" style={{ color: "#9A6B46" }}>GPT-4o</span>
           </div>
         </div>
+
+        {/* Logged-in user + logout */}
+        {user && (
+          <div
+            className="px-4 py-3 flex items-center justify-between gap-2"
+            style={{ borderTop: "1px solid rgba(255,120,0,0.10)" }}
+          >
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold truncate" style={{ color: "#E8C090" }}>
+                {user.full_name}
+              </p>
+              <p className="text-[8px] tracking-[0.1em] uppercase" style={{ color: "#6A4828" }}>
+                {user.role === "admin" ? "Admin" : "Fund Manager"}
+              </p>
+            </div>
+            <button
+              onClick={logout}
+              title="Log out"
+              className="shrink-0 p-1.5 rounded transition-colors"
+              style={{ color: "#6A4828" }}
+              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#FF8000")}
+              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "#6A4828")}
+            >
+              <LogOut size={13} />
+            </button>
+          </div>
+        )}
 
         {/* Bottom accent bar */}
         <div style={{ height: "2px", background: "linear-gradient(to right, #7A2500, #FF8000)" }} />

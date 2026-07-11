@@ -5,7 +5,8 @@ from typing import List, Optional
 from datetime import date, datetime
 
 from database import get_db
-from models import MarketEvent, Position, Security, Portfolio, PositionChangeLog
+from models import MarketEvent, Position, Security, Portfolio, PositionChangeLog, User
+from auth import get_current_user, scope_portfolio_query
 from schemas import MarketEventResponse, PortfolioResponse
 
 router = APIRouter()
@@ -19,6 +20,7 @@ def get_market_events(
     impact_level: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get all market events with optional filtering"""
@@ -38,7 +40,7 @@ def get_market_events(
 
 
 @router.get("/{event_id}", response_model=MarketEventResponse)
-def get_market_event(event_id: int, db: Session = Depends(get_db)):
+def get_market_event(event_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get detailed market event information"""
     event = db.query(MarketEvent).filter(MarketEvent.event_id == event_id).first()
     if not event:
@@ -49,9 +51,10 @@ def get_market_event(event_id: int, db: Session = Depends(get_db)):
 @router.get("/{event_id}/affected-portfolios", response_model=List[dict])
 def get_affected_portfolios(
     event_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get portfolios affected by a specific market event"""
+    """Get portfolios (that the current user has access to) affected by a market event"""
     event = db.query(MarketEvent).filter(MarketEvent.event_id == event_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="Market event not found")
@@ -62,8 +65,9 @@ def get_affected_portfolios(
 
     affected_portfolio_ids = list(set([pc.portfolio_id for pc in position_changes]))
 
-    portfolios = db.query(Portfolio).filter(
-        Portfolio.portfolio_id.in_(affected_portfolio_ids)
+    portfolios = scope_portfolio_query(
+        db.query(Portfolio).filter(Portfolio.portfolio_id.in_(affected_portfolio_ids)),
+        current_user,
     ).all()
 
     result = []

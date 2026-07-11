@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import date
 
 from database import get_db
-from models import Portfolio, Position, Transaction, PortfolioPerformance, Customer
+from models import Portfolio, Position, Transaction, PortfolioPerformance, Customer, User
+from auth import get_current_user, require_portfolio_access, scope_portfolio_query
 from schemas import (
     PortfolioResponse,
     PortfolioDetailsResponse,
@@ -22,10 +23,11 @@ def get_portfolios(
     skip: int = 0,
     limit: int = 100,
     customer_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get all portfolios with optional filtering by customer"""
-    query = db.query(Portfolio)
+    """Get portfolios the current user manages (all 50 for admin), optional customer filter"""
+    query = scope_portfolio_query(db.query(Portfolio), current_user)
     if customer_id:
         query = query.filter(Portfolio.customer_id == customer_id)
     portfolios = query.order_by(Portfolio.portfolio_id).offset(skip).limit(limit).all()
@@ -33,12 +35,9 @@ def get_portfolios(
 
 
 @router.get("/{portfolio_id}", response_model=PortfolioDetailsResponse)
-def get_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
+def get_portfolio(portfolio: Portfolio = Depends(require_portfolio_access), db: Session = Depends(get_db)):
     """Get detailed portfolio information"""
-    portfolio = db.query(Portfolio).filter(Portfolio.portfolio_id == portfolio_id).first()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-
+    portfolio_id = portfolio.portfolio_id
     positions_count = db.query(Position).filter(Position.portfolio_id == portfolio_id).count()
 
     total_positions_value = db.query(Position).filter(
@@ -60,17 +59,13 @@ def get_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{portfolio_id}/positions", response_model=List[PositionResponse])
 def get_portfolio_positions(
-    portfolio_id: int,
     position_type: Optional[str] = None,
     sector: Optional[str] = None,
+    portfolio: Portfolio = Depends(require_portfolio_access),
     db: Session = Depends(get_db)
 ):
     """Get all positions for a portfolio with optional filters"""
-    portfolio = db.query(Portfolio).filter(Portfolio.portfolio_id == portfolio_id).first()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-
-    query = db.query(Position).filter(Position.portfolio_id == portfolio_id)
+    query = db.query(Position).filter(Position.portfolio_id == portfolio.portfolio_id)
 
     if position_type:
         query = query.filter(Position.position_type == position_type)
@@ -81,19 +76,15 @@ def get_portfolio_positions(
 
 @router.get("/{portfolio_id}/performance", response_model=List[PerformanceResponse])
 def get_portfolio_performance(
-    portfolio_id: int,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     limit: int = Query(default=30, le=365),
+    portfolio: Portfolio = Depends(require_portfolio_access),
     db: Session = Depends(get_db)
 ):
     """Get performance metrics for a portfolio"""
-    portfolio = db.query(Portfolio).filter(Portfolio.portfolio_id == portfolio_id).first()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-
     query = db.query(PortfolioPerformance).filter(
-        PortfolioPerformance.portfolio_id == portfolio_id
+        PortfolioPerformance.portfolio_id == portfolio.portfolio_id
     )
 
     if start_date:
@@ -107,19 +98,15 @@ def get_portfolio_performance(
 
 @router.get("/{portfolio_id}/history", response_model=List[TransactionResponse])
 def get_portfolio_history(
-    portfolio_id: int,
     transaction_type: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     limit: int = Query(default=100, le=1000),
+    portfolio: Portfolio = Depends(require_portfolio_access),
     db: Session = Depends(get_db)
 ):
     """Get transaction history for a portfolio"""
-    portfolio = db.query(Portfolio).filter(Portfolio.portfolio_id == portfolio_id).first()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-
-    query = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id)
+    query = db.query(Transaction).filter(Transaction.portfolio_id == portfolio.portfolio_id)
 
     if transaction_type:
         query = query.filter(Transaction.transaction_type == transaction_type)

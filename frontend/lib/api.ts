@@ -3,6 +3,7 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
+    credentials: "include",   // send the httpOnly JWT cookie (Task 6.4)
     headers: {
       "Content-Type": "application/json",
       "ngrok-skip-browser-warning": "1",   // bypass ngrok free-tier interstitial
@@ -12,6 +13,34 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
   return res.json();
 }
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+export interface CurrentUser {
+  user_id: number;
+  email: string;
+  full_name: string;
+  role: "fund_manager" | "admin";
+}
+
+export async function login(email: string, password: string): Promise<CurrentUser> {
+  const res = await fetch(`${BASE}/auth/login`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || "Invalid email or password");
+  }
+  return res.json();
+}
+
+export const logout = () =>
+  apiFetch<{ status: string }>("/auth/logout", { method: "POST" });
+
+export const getCurrentUser = () =>
+  apiFetch<CurrentUser>("/auth/me");
 
 // ── Portfolios ────────────────────────────────────────────────────────────────
 export const getPortfolios = () =>
@@ -96,7 +125,8 @@ export async function aiChatStream(
   onToolCall?: (toolName: string) => void,
 ): Promise<void> {
   const res = await fetch(`${BASE}/api/analysis/ai/chat`, {
-    method:  "POST",
+    method:      "POST",
+    credentials: "include",   // send the httpOnly JWT cookie (Task 6.4)
     headers: {
       "Content-Type": "application/json",
       "ngrok-skip-browser-warning": "1",

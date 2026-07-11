@@ -23,6 +23,7 @@ class Portfolio(Base):
 
     portfolio_id = Column(Integer, primary_key=True, index=True)
     customer_id = Column(Integer, ForeignKey("Customers.customer_id"))
+    manager_id = Column(Integer, ForeignKey("Users.user_id"), nullable=True)
     portfolio_name = Column(String(255), nullable=False)
     total_value = Column(DECIMAL(20, 2))
     cash_balance = Column(DECIMAL(20, 2))
@@ -31,9 +32,21 @@ class Portfolio(Base):
     strategy_type = Column(String(100))
 
     customer = relationship("Customer", back_populates="portfolios")
+    manager = relationship("User")
     positions = relationship("Position", back_populates="portfolio")
     transactions = relationship("Transaction", back_populates="portfolio")
     performance = relationship("PortfolioPerformance", back_populates="portfolio")
+
+
+class User(Base):
+    __tablename__ = "Users"
+
+    user_id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, unique=True)
+    hashed_password = Column(String(255), nullable=False)
+    full_name = Column(String(255), nullable=False)
+    role = Column(String(20), nullable=False)  # fund_manager | admin
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Security(Base):

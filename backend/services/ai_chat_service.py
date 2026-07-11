@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'rag'))
 
 from services.ai_tools import TOOL_DEFINITIONS, execute_tool
+from models import User
 
 load_dotenv()
 
@@ -62,8 +63,9 @@ If ChromaDB is unavailable, work with the SQL data you have and note the limitat
 
 
 class AIChatService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, current_user: User):
         self.db = db
+        self.current_user = current_user
         self._client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
     def stream_response(
@@ -136,7 +138,7 @@ class AIChatService:
                 yield {"tool_call": tc.function.name}
                 try:
                     args = json.loads(tc.function.arguments)
-                    result = execute_tool(tc.function.name, args, self.db)
+                    result = execute_tool(tc.function.name, args, self.db, self.current_user)
                 except Exception as exc:
                     result = {"error": str(exc)}
 

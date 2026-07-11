@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from database import get_db
-from models import Security
+from models import Security, User
+from auth import get_current_user
 from schemas import SecurityResponse
 
 router = APIRouter()
@@ -16,9 +17,10 @@ def get_securities(
     security_type: Optional[str] = None,
     sector: Optional[str] = None,
     country: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get all securities with optional filtering"""
+    """Get all securities with optional filtering — reference data, any logged-in user"""
     query = db.query(Security)
 
     if security_type:
@@ -33,7 +35,7 @@ def get_securities(
 
 
 @router.get("/{security_id}", response_model=SecurityResponse)
-def get_security(security_id: int, db: Session = Depends(get_db)):
+def get_security(security_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get detailed security information"""
     security = db.query(Security).filter(Security.security_id == security_id).first()
     if not security:
@@ -42,7 +44,7 @@ def get_security(security_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/ticker/{ticker_symbol}", response_model=SecurityResponse)
-def get_security_by_ticker(ticker_symbol: str, db: Session = Depends(get_db)):
+def get_security_by_ticker(ticker_symbol: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get security information by ticker symbol"""
     security = db.query(Security).filter(Security.ticker_symbol == ticker_symbol).first()
     if not security:
