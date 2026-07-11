@@ -35,16 +35,14 @@ def load_aws_secrets() -> None:
     for key, value in secret.items():
         os.environ[key] = str(value)
 
+    # get_parameter (singular) rather than the batch get_parameters — the IAM
+    # policy grants ssm:GetParameter, a distinct action from ssm:GetParameters.
     ssm = boto3.client("ssm", region_name=region)
-    response = ssm.get_parameters(Names=list(SSM_PARAM_TO_ENV.keys()))
-    for param in response["Parameters"]:
-        os.environ[SSM_PARAM_TO_ENV[param["Name"]]] = param["Value"]
-
-    missing = set(SSM_PARAM_TO_ENV) - {p["Name"] for p in response["Parameters"]}
-    if missing:
-        raise RuntimeError(f"SSM parameters not found: {missing}")
+    for param_name, env_key in SSM_PARAM_TO_ENV.items():
+        value = ssm.get_parameter(Name=param_name)["Parameter"]["Value"]
+        os.environ[env_key] = value
 
     print(
         f"[OK]   Loaded {len(secret)} secrets from Secrets Manager "
-        f"({SECRET_ID}) + {len(response['Parameters'])} params from SSM Parameter Store"
+        f"({SECRET_ID}) + {len(SSM_PARAM_TO_ENV)} params from SSM Parameter Store"
     )
