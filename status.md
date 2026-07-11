@@ -262,7 +262,7 @@
 | 5 — Advanced | 🔄 In Progress | 5.1 ✅ 5.2 ✅ (all 3 alert types) 5.3 ✅ · pending: 5.4 report generation |
 | 6 — Infrastructure | 🔄 In Progress | Backend cloud deploy ✅ (6.3 partial) · 6.4 JWT auth ✅ (local only) · Redis, Dockerization, real CI/CD still pending |
 
-**Current Focus**: Task 6.4 (JWT auth + multi-tenant portfolio access) is built and verified end-to-end locally — login, REST scoping, AI chat tool dispatcher, MCP server, and WebSocket all enforce per-manager access, with the full verification matrix (401/403/200/scoped-list/admin-bypass) passing against production Azure SQL and a real browser. **Not yet deployed** — `api.fin-sightai.space` still runs the old unauthenticated build, and the live MCP server on the Flink EC2 will refuse to restart without a `FINSIGHT_MCP_TOKEN` once redeployed (by design — fails closed). Next: deploy Task 6.4 to production, then remaining Phase 5/6 items — 5.4 report generation, real CI/CD, Redis caching, Dockerization.
+**Current Focus**: Task 6.4 (JWT auth + multi-tenant portfolio access) is fully deployed to production and verified end-to-end — login, REST scoping, AI chat tool dispatcher, MCP server, and WebSocket all enforce per-manager access on the live site (`www.fin-sightai.space` / `api.fin-sightai.space`). The MCP server was also relocated from the Flink EC2 (market-hours-only, wrong box for an always-on service) to the ChromaDB EC2, which was resized t3.micro → t3.small to fit ChromaDB + backend + MCP (+ Redis, next) comfortably. Next: Redis caching (Task 6.2, same box), 5.4 report generation, real CI/CD, Dockerization.
 
 **Known Runtime Issues**:
 - ChromaDB container not running locally → `search_market_context` returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)
@@ -334,7 +334,7 @@ Also caught one unrelated issue while restarting the backend for this test: `mai
 | **AWS Flink EC2** | EC2 `13.233.21.229` (t3.medium) | ✅ Live | Kafka + Flink + Finnhub producer. EventBridge triggers daily risk job at 17:30 ET Mon–Fri. |
 | **Vercel (Frontend)** | Vercel cloud | ✅ Live | `https://frontend-sandy-seven-21.vercel.app` — deployed from git |
 | **FastAPI Backend** | Local only | ⚠️ Local | `http://localhost:8000` — needs EC2/cloud deployment via CI/CD |
-| **MCP Server** | AWS Flink EC2 (SSE) | ✅ Live | `http://13.233.21.229:8002/sse` — always-on, fund managers connect with one line |
+| **MCP Server** | AWS ChromaDB EC2 (SSE), moved 2026-07-11 | ✅ Live | `http://13.206.225.80:8002/sse` — always-on now (was on the market-hours-only Flink EC2 before). Isolated `mcpvenv`, own systemd service (`finsight-mcp`), bound to the admin identity. |
 | **Local ChromaDB** | Shut down | ✅ Retired | Docker container no longer needed — all RAG uses AWS ChromaDB |
 | **Local SQL Server** | Shut down | ✅ Retired | Docker container no longer needed — all DB uses Azure SQL |
 | **Local Next.js** | Local only | ⚠️ Local | `http://localhost:3000` — Vercel is the production frontend |

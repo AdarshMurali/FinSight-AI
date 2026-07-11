@@ -901,7 +901,7 @@ The history is being silently built up and not yet used. This task surfaces that
 - Hardcoded `secure=True` on the auth cookies silently blocked all local HTTP testing (`Secure` cookies are never sent over plain HTTP, by curl or any real browser — `COOKIE_SECURE` is now a setting, off in dev `.env`, on in production).
 - Next.js 16's new `allowedDevOrigins` protection blocked the HMR websocket between `127.0.0.1` and `localhost`, silently preventing the whole client bundle from hydrating — no console error, just a permanently blank screen. Not a code bug; just means local dev must be accessed via `localhost:3000`.
 
-**Deployment note**: this is local code only — the production backend (`api.fin-sightai.space`) and its `.env` have not been updated, and the live AWS MCP server will need `FINSIGHT_MCP_TOKEN` set before its next restart or it will refuse to start (by design — fail closed).
+**Deployment note**: ✅ fully deployed to production 2026-07-11 (backend, frontend, and MCP server — see `CLOUD_MIGRATION.md` for the full writeup, including the MCP server's relocation from the Flink EC2 to the ChromaDB EC2 and that EC2's resize to t3.small).
 
 **Why this matters**: Today there is no concept of "who is logged in" anywhere in the schema — `Customers` are the institutions being managed, not the people managing them. Bolting JWT on without also scoping data access would just add a login page in front of the same unrestricted 50-portfolio view.
 
@@ -1224,7 +1224,7 @@ load_secrets("finsight/prod")  # call before app init
 
 **Created**: 2026-06-14
 **Last Updated**: 2026-07-11
-**Status**: Tasks 5.1, 5.2 (incl. event + AI alerts), 5.3, 3.4b (FastMCP + hosted on AWS EC2), 6.4 (JWT + multi-tenant access, local only) complete. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend now live at `https://www.fin-sightai.space`. Task 6.4 built and verified locally 2026-07-11, not yet deployed to production. Pending: deploy 6.4, real CI/CD, Redis caching, Dockerization.
+**Status**: Tasks 5.1, 5.2 (incl. event + AI alerts), 5.3, 3.4b (FastMCP), 6.4 (JWT + multi-tenant access) all complete and live in production as of 2026-07-11. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend live at `https://www.fin-sightai.space`. MCP server relocated from the Flink EC2 to the ChromaDB EC2 2026-07-11 (that box resized t3.micro → t3.small to fit it). Pending: Redis caching (same box, capacity now confirmed), Task 5.4 report generation, real CI/CD, Dockerization.
 
 ---
 
