@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # it True — override via COOKIE_SECURE=True in the EC2 .env.
     COOKIE_SECURE: bool = True
 
+    # Redis (Task 6.2) — self-hosted on the same EC2 as ChromaDB/backend, so
+    # "localhost" is the real production value, not just a dev default.
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+
     @property
     def database_url(self) -> str:
         is_azure = "database.windows.net" in self.DB_SERVER

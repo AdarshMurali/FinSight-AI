@@ -6,6 +6,7 @@ from datetime import date
 from database import get_db
 from models import Portfolio, Position, Transaction, PortfolioPerformance, Customer, User
 from auth import get_current_user, require_portfolio_access, scope_portfolio_query
+from services.cache import get_or_set
 from schemas import (
     PortfolioResponse,
     PortfolioDetailsResponse,
@@ -16,6 +17,13 @@ from schemas import (
 )
 
 router = APIRouter()
+
+# Heavy joins recomputed on every page load even though the underlying data
+# (transactions, position weights) changes rarely. Same TTL bucket as
+# plan.md's original table — no cross-EC2 invalidation concern here the way
+# risk metrics has, since 5 min is already short enough to bound staleness
+# from price_update_job.py's daily run without needing to invalidate at all.
+PORTFOLIO_SUMMARY_TTL = 300
 
 
 @router.get("/", response_model=List[PortfolioResponse])
@@ -37,24 +45,29 @@ def get_portfolios(
 @router.get("/{portfolio_id}", response_model=PortfolioDetailsResponse)
 def get_portfolio(portfolio: Portfolio = Depends(require_portfolio_access), db: Session = Depends(get_db)):
     """Get detailed portfolio information"""
-    portfolio_id = portfolio.portfolio_id
-    positions_count = db.query(Position).filter(Position.portfolio_id == portfolio_id).count()
+    def _compute():
+        portfolio_id = portfolio.portfolio_id
+        positions_count = db.query(Position).filter(Position.portfolio_id == portfolio_id).count()
 
-    total_positions_value = db.query(Position).filter(
-        Position.portfolio_id == portfolio_id
-    ).with_entities(Position.market_value).all()
-    total_value = sum(float(pv[0]) if pv[0] else 0 for pv in total_positions_value)
+        total_positions_value = db.query(Position).filter(
+            Position.portfolio_id == portfolio_id
+        ).with_entities(Position.market_value).all()
+        total_value = sum(float(pv[0]) if pv[0] else 0 for pv in total_positions_value)
 
-    customer = db.query(Customer).filter(Customer.customer_id == portfolio.customer_id).first()
+        customer = db.query(Customer).filter(Customer.customer_id == portfolio.customer_id).first()
 
-    portfolio_dict = {
-        **portfolio.__dict__,
-        "positions_count": positions_count,
-        "total_positions_value": total_value,
-        "customer": customer
-    }
+        portfolio_dict = {
+            **portfolio.__dict__,
+            "positions_count": positions_count,
+            "total_positions_value": total_value,
+            "customer": customer
+        }
+        # Serialize through the response schema now (not left to FastAPI on the way
+        # out) so nested ORM objects / Decimals / datetimes are plain JSON-safe
+        # types before this ever reaches the cache's json.dumps.
+        return PortfolioDetailsResponse.model_validate(portfolio_dict).model_dump(mode="json")
 
-    return portfolio_dict
+    return get_or_set(f"portfolio:summary:{portfolio.portfolio_id}", PORTFOLIO_SUMMARY_TTL, _compute)
 
 
 @router.get("/{portfolio_id}/positions", response_model=List[PositionResponse])
@@ -65,13 +78,15 @@ def get_portfolio_positions(
     db: Session = Depends(get_db)
 ):
     """Get all positions for a portfolio with optional filters"""
-    query = db.query(Position).filter(Position.portfolio_id == portfolio.portfolio_id)
+    def _compute():
+        query = db.query(Position).filter(Position.portfolio_id == portfolio.portfolio_id)
+        if position_type:
+            query = query.filter(Position.position_type == position_type)
+        positions = query.all()
+        return [PositionResponse.model_validate(p).model_dump(mode="json") for p in positions]
 
-    if position_type:
-        query = query.filter(Position.position_type == position_type)
-
-    positions = query.all()
-    return positions
+    key = f"portfolio:positions:{portfolio.portfolio_id}:{position_type or 'all'}"
+    return get_or_set(key, PORTFOLIO_SUMMARY_TTL, _compute)
 
 
 @router.get("/{portfolio_id}/performance", response_model=List[PerformanceResponse])

@@ -7,6 +7,10 @@ from sqlalchemy.orm import Session
 from database import Base, engine, get_db
 from models import Alert, Portfolio, User
 from auth import get_current_user, check_portfolio_access
+from services.cache import get_or_set, invalidate
+
+UNREAD_COUNT_TTL = 60  # matches the sidebar's own 60s polling interval — caching
+                       # to a shorter TTL than that would be pointless
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -55,14 +59,33 @@ def get_alerts(
     return [_to_dict(r) for r in rows]
 
 
+def _unread_count_cache_key(portfolio_id: Optional[int], current_user: User) -> str:
+    # portfolio_id given -> the underlying count is the same for anyone authorized
+    # to see it, so key by portfolio, not by caller. No portfolio_id -> "all mine",
+    # which genuinely differs per user (or per admin, if more than one exists later).
+    if portfolio_id is not None:
+        return f"alerts:unread:portfolio:{portfolio_id}"
+    return f"alerts:unread:user:{current_user.user_id}"
+
+
 @router.get("/unread-count")
 def unread_count(
     portfolio_id: Optional[int] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    q = _apply_scope(db.query(Alert).filter(Alert.is_read == 0), portfolio_id, current_user, db)
-    return {"count": q.count()}
+    # Ownership check must happen before caching, uncached, every time — the
+    # 403 for an unauthorized portfolio_id must never be skipped.
+    if portfolio_id is not None and not check_portfolio_access(db, current_user, portfolio_id):
+        raise HTTPException(status_code=403, detail="Not authorized for this portfolio")
+
+    key = _unread_count_cache_key(portfolio_id, current_user)
+
+    def _compute():
+        q = _apply_scope(db.query(Alert).filter(Alert.is_read == 0), portfolio_id, current_user, db)
+        return {"count": q.count()}
+
+    return get_or_set(key, UNREAD_COUNT_TTL, _compute)
 
 
 @router.patch("/{alert_id}/read")
@@ -74,6 +97,9 @@ def mark_read(alert_id: int, current_user: User = Depends(get_current_user), db:
         raise HTTPException(status_code=403, detail="Not authorized for this alert")
     alert.is_read = 1
     db.commit()
+    invalidate(f"alerts:unread:user:{current_user.user_id}")
+    if alert.portfolio_id is not None:
+        invalidate(f"alerts:unread:portfolio:{alert.portfolio_id}")
     return {"status": "ok"}
 
 
@@ -83,9 +109,19 @@ def mark_all_read(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if portfolio_id is not None and not check_portfolio_access(db, current_user, portfolio_id):
+        raise HTTPException(status_code=403, detail="Not authorized for this portfolio")
+
     q = _apply_scope(db.query(Alert).filter(Alert.is_read == 0), portfolio_id, current_user, db)
     q.update({"is_read": 1}, synchronize_session=False)
     db.commit()
+
+    invalidate(f"alerts:unread:user:{current_user.user_id}")
+    if portfolio_id is not None:
+        invalidate(f"alerts:unread:portfolio:{portfolio_id}")
+    else:
+        for pid in (_scoped_portfolio_ids(db, current_user) or []):
+            invalidate(f"alerts:unread:portfolio:{pid}")
     return {"status": "ok"}
 
 

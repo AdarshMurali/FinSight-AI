@@ -10,9 +10,19 @@ from database import Base, get_db, engine
 from models import RiskMetric, Portfolio
 from auth import require_portfolio_access
 from services.risk_analytics import compute_all
+from services.cache import get_or_set, invalidate
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# plan.md originally called for a 24h TTL here ("computed once/day"), but
+# risk_job.py — the daily automated computation — runs on a DIFFERENT EC2
+# (the Flink box) than the one hosting Redis, with no way to signal a cache
+# invalidation across boxes without exposing Redis to the network (Redis has
+# no auth by default — worse than the staleness it would fix). A shorter TTL
+# bounds staleness naturally instead: at most 30 minutes of drift after the
+# daily job runs, rather than up to a full day.
+RISK_METRICS_TTL = 1800
 
 
 def ensure_table():
@@ -31,6 +41,7 @@ def _save(db: Session, portfolio_id: int, result: Dict[str, Any]):
     )
     db.add(row)
     db.commit()
+    invalidate(f"risk:latest:{portfolio_id}")
 
 
 def _latest(db: Session, portfolio_id: int):
@@ -57,18 +68,21 @@ def _run_and_save(portfolio_id: int):
 
 @router.get("/{portfolio_id}")
 def get_risk_metrics(portfolio: Portfolio = Depends(require_portfolio_access), db: Session = Depends(get_db)):
-    row = _latest(db, portfolio.portfolio_id)
-    if not row:
-        return {"status": "not_computed"}
-    return {
-        "status":        "ok",
-        "portfolio_id":  portfolio.portfolio_id,
-        "computed_at":   row.computed_at.isoformat(),
-        "price_date":    str(row.price_date) if row.price_date else None,
-        "var":           json.loads(row.var_data or "{}"),
-        "stress_tests":  json.loads(row.stress_data or "[]"),
-        "factor_exposure": json.loads(row.factor_data or "{}"),
-    }
+    def _compute():
+        row = _latest(db, portfolio.portfolio_id)
+        if not row:
+            return {"status": "not_computed"}
+        return {
+            "status":        "ok",
+            "portfolio_id":  portfolio.portfolio_id,
+            "computed_at":   row.computed_at.isoformat(),
+            "price_date":    str(row.price_date) if row.price_date else None,
+            "var":           json.loads(row.var_data or "{}"),
+            "stress_tests":  json.loads(row.stress_data or "[]"),
+            "factor_exposure": json.loads(row.factor_data or "{}"),
+        }
+
+    return get_or_set(f"risk:latest:{portfolio.portfolio_id}", RISK_METRICS_TTL, _compute)
 
 
 @router.get("/{portfolio_id}/history")
