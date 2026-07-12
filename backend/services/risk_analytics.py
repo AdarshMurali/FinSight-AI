@@ -36,7 +36,19 @@ def _get_positions(db: Session, portfolio_id: int) -> List[Tuple[str, float]]:
         .filter(Position.portfolio_id == portfolio_id)
         .all()
     )
-    return [(sec.ticker_symbol, float(pos.quantity)) for pos, sec in rows if sec.ticker_symbol]
+    # Net duplicate tickers (e.g. a market-neutral book holding SPY as both a
+    # long and short leg) into one combined quantity. Without this, the same
+    # ticker passed twice into yfinance's download produces a duplicate
+    # column, and `latest[t]` in _real_weights returns a Series instead of a
+    # scalar, crashing on float(). Netting is also the economically correct
+    # treatment — what matters for risk purposes is net exposure to the
+    # instrument, not the gross legs.
+    net_qty: Dict[str, float] = {}
+    for pos, sec in rows:
+        if not sec.ticker_symbol:
+            continue
+        net_qty[sec.ticker_symbol] = net_qty.get(sec.ticker_symbol, 0.0) + float(pos.quantity)
+    return list(net_qty.items())
 
 
 def _download_prices(
@@ -271,9 +283,19 @@ def run_parametric_shocks(
     if not rows:
         return []
 
-    tickers = [r.ticker_symbol for r in rows]
-    quantities = [float(r.quantity) for r in rows]
-    sector_by_ticker = {r.ticker_symbol: r.sector for r in rows}
+    # Net duplicate tickers (long+short legs of the same instrument) into one
+    # combined quantity — see _get_positions() for why this matters.
+    net_qty: Dict[str, float] = {}
+    sector_by_ticker: Dict[str, str] = {}
+    for quantity, ticker, sector in rows:
+        if not ticker:
+            continue
+        net_qty[ticker] = net_qty.get(ticker, 0.0) + float(quantity)
+        sector_by_ticker[ticker] = sector
+    if not net_qty:
+        return []
+    tickers = list(net_qty.keys())
+    quantities = list(net_qty.values())
 
     cur_prices = _download_prices(tickers, period="1mo")
     weights = _real_weights(tickers, quantities, cur_prices)
