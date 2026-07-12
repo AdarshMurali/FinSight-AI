@@ -262,8 +262,10 @@ def get_portfolio_risk(portfolio_id: int) :
     """
     Get the latest computed risk metrics for a portfolio:
     - VaR (Value at Risk): historical 95%/99%, parametric, 1-day and 10-day
-    - 5 stress tests: 2008 Financial Crisis, COVID Crash, 2022 Rate Shock,
+    - 5 historical stress tests: 2008 Financial Crisis, COVID Crash, 2022 Rate Shock,
       2023 Regional Banking Crisis, 2026 Iran War — showing portfolio impact %
+    - 4 parametric shocks: Rates +/-100bps, Equities -20%, No Stress — sensitivity-based
+      (duration proxy / market beta applied to today's book), not historical replay
     - Factor exposure: market beta, tech beta, value/growth/momentum betas
     Returns 'not_computed' status if the daily risk job has not run yet.
     Use refresh_portfolio_risk to trigger a fresh calculation.
@@ -284,14 +286,15 @@ def get_portfolio_risk(portfolio_id: int) :
                 "portfolio_id": portfolio_id,
                 "hint": "Call refresh_portfolio_risk to compute now (takes ~15-30s)",
             }
-        var_data    = json.loads(row.var_data or "{}")
-        stress_data = json.loads(row.stress_data or "[]")
-        factor_data = json.loads(row.factor_data or "{}")
+        var_data        = json.loads(row.var_data or "{}")
+        stress_data     = json.loads(row.stress_data or "[]")
+        factor_data     = json.loads(row.factor_data or "{}")
+        parametric_data = json.loads(row.parametric_data or "[]")
 
         # Summarise stress tests
         stress_summary = [
             {
-                "scenario":         s.get("scenario"),
+                "scenario":         s.get("name"),
                 "portfolio_impact": f"{s.get('portfolio_impact_pct', 0):.2f}%",
                 "severity":         "critical" if s.get("portfolio_impact_pct", 0) < -25 else "warning" if s.get("portfolio_impact_pct", 0) < -10 else "ok",
             }
@@ -306,6 +309,7 @@ def get_portfolio_risk(portfolio_id: int) :
             "var": var_data,
             "stress_tests": stress_summary,
             "factor_exposure": factor_data,
+            "parametric_shocks": parametric_data,
         }
     except Exception as e:
         return {"error": str(e), "portfolio_id": portfolio_id}

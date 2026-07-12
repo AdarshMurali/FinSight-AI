@@ -36,6 +36,7 @@ def _save(db: Session, portfolio_id: int, result: Dict[str, Any]):
         var_data=json.dumps(result.get("var", {})),
         stress_data=json.dumps(result.get("stress_tests", [])),
         factor_data=json.dumps(result.get("factor_exposure", {})),
+        parametric_data=json.dumps(result.get("parametric_shocks", [])),
         price_date=date.today(),
         status="completed",
     )
@@ -80,6 +81,7 @@ def get_risk_metrics(portfolio: Portfolio = Depends(require_portfolio_access), d
             "var":           json.loads(row.var_data or "{}"),
             "stress_tests":  json.loads(row.stress_data or "[]"),
             "factor_exposure": json.loads(row.factor_data or "{}"),
+            "parametric_shocks": json.loads(row.parametric_data or "[]"),
         }
 
     return get_or_set(f"risk:latest:{portfolio.portfolio_id}", RISK_METRICS_TTL, _compute)

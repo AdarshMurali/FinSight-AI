@@ -71,6 +71,7 @@ def save_result(db, portfolio_id: int, result: dict):
         var_data=json.dumps(result.get("var", {})),
         stress_data=json.dumps(result.get("stress_tests", [])),
         factor_data=json.dumps(result.get("factor_exposure", {})),
+        parametric_data=json.dumps(result.get("parametric_shocks", [])),
         price_date=date.today(),
         status="completed",
     )

@@ -365,6 +365,16 @@ export interface FactorExposure {
   error?: string;
 }
 
+export interface ParametricShock {
+  name: string;
+  methodology: "duration_proxy" | "market_beta" | "baseline";
+  portfolio_impact_pct: number | null;
+  fixed_income_weight_pct?: number;
+  duration_proxy_years?: number;
+  market_beta?: number;
+  note?: string;
+}
+
 export interface RiskMetrics {
   status: "ok" | "not_computed" | "computing";
   portfolio_id?: number;
@@ -373,6 +383,7 @@ export interface RiskMetrics {
   var?: VarData;
   stress_tests?: StressTest[];
   factor_exposure?: FactorExposure;
+  parametric_shocks?: ParametricShock[];
 }
 
 export const getRiskMetrics = (portfolio_id: number) =>

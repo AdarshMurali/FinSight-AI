@@ -543,6 +543,52 @@ export default function PortfolioPage() {
                 </div>
               )}
 
+              {/* Parametric Shock Scenarios */}
+              {riskData.parametric_shocks && riskData.parametric_shocks.length > 0 && (
+                <div>
+                  <div className="bg-[#F5821F] px-3 py-1.5">
+                    <span className="text-black text-[10px] font-bold tracking-[0.15em]">PARAMETRIC SHOCK SCENARIOS</span>
+                  </div>
+                  <div className="border border-[#2A2A2A] border-t-0 bg-[#0D0D0D] px-4 py-2">
+                    <p className="text-[#555] text-[9px]">
+                      Sensitivity-based — applied via computed factor beta / rate-duration proxy to today&apos;s book, not historical replay.
+                    </p>
+                  </div>
+                  <div className="border border-[#2A2A2A] border-t-0 overflow-x-auto">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>SCENARIO</th>
+                          <th className="text-right">PORTFOLIO IMPACT</th>
+                          <th className="text-right">BASIS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {riskData.parametric_shocks.map(ps => (
+                          <tr key={ps.name}>
+                            <td className="font-bold text-[#E0E0E0]">{ps.name}</td>
+                            <td className={`text-right font-bold tabular-nums text-lg ${
+                              ps.portfolio_impact_pct == null ? "text-[#888]"
+                              : ps.portfolio_impact_pct < 0 ? "text-[#FF4040]" : "text-[#00CC44]"
+                            }`}>
+                              {ps.portfolio_impact_pct == null ? "—" :
+                                `${ps.portfolio_impact_pct >= 0 ? "+" : ""}${ps.portfolio_impact_pct.toFixed(2)}%`}
+                            </td>
+                            <td className="text-right text-[#888] text-[10px]">
+                              {ps.methodology === "duration_proxy" &&
+                                `${ps.fixed_income_weight_pct?.toFixed(1)}% FI @ ${ps.duration_proxy_years}yr duration`}
+                              {ps.methodology === "market_beta" &&
+                                (ps.market_beta != null ? `market beta ${ps.market_beta.toFixed(2)}` : ps.note)}
+                              {ps.methodology === "baseline" && "reference"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {/* Factor Exposure */}
               {riskData.factor_exposure && !riskData.factor_exposure.error && riskData.factor_exposure.factors && (
                 <div>

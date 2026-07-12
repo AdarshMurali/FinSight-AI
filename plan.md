@@ -682,7 +682,9 @@ fastmcp>=0.1.0
 
 5. **Data Storage** (`Risk_Metrics` table, SQL Server)
    - One row per portfolio per day — historical record accumulates
-   - Fields: `var_data`, `stress_data`, `factor_data` (JSON), `computed_at`, `price_date`
+   - Fields: `var_data`, `stress_data`, `factor_data`, `parametric_data` (JSON), `computed_at`, `price_date`
+
+**Note (2026-07-12)**: the original "6 stress test scenarios" list above (Rate Hike, Tech Crash, Oil Shock, Stagflation) never matched what was actually built — this section predates implementation and was never updated. Actual current state: **5 historical-replay scenarios** (2008 Financial Crisis, COVID Crash, 2022 Rate Shock, 2023 Regional Banking Crisis, 2026 Iran War) plus **4 parametric shock scenarios** (Rates +100bps/-100bps via a duration proxy, Equities -20% via computed market beta, No Stress baseline) — a deliberately separate sensitivity-based methodology, not historical replay. Full writeup, including the duration-proxy simplification and known gaps, is in `status.md`.
 
 **Run command (local)**:
 ```powershell
@@ -1228,8 +1230,8 @@ Called from the top of `config.py`, before `Settings()` is instantiated — pyda
 ---
 
 **Created**: 2026-06-14
-**Last Updated**: 2026-07-11
-**Status**: All of Phase 5 (5.1, 5.2 incl. event + AI alerts, 5.3, 5.4 PDF reports) complete. 3.4b (FastMCP), 6.2 (Redis/Valkey caching), 6.4 (JWT + multi-tenant access), 7.2 (AWS Secrets Manager + SSM Parameter Store) also complete and live in production as of 2026-07-11. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend live at `https://www.fin-sightai.space`. MCP server relocated from the Flink EC2 to the ChromaDB EC2 2026-07-11 (that box resized t3.micro → t3.small to fit it, now also running Redis/Valkey). Overview tab volatility display bug (found during 5.4) fixed and deployed 2026-07-11 — see status.md for details. Pending: real CI/CD, Dockerization, Excel report format (deferred).
+**Last Updated**: 2026-07-12
+**Status**: All of Phase 5 (5.1, 5.2 incl. event + AI alerts, 5.3, 5.4 PDF reports) complete. 3.4b (FastMCP), 6.2 (Redis/Valkey caching), 6.4 (JWT + multi-tenant access), 7.2 (AWS Secrets Manager + SSM Parameter Store) also complete and live in production. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend live at `https://www.fin-sightai.space`. MCP server relocated from the Flink EC2 to the ChromaDB EC2 2026-07-11 (that box resized t3.micro → t3.small to fit it, now also running Redis/Valkey). Overview tab volatility display bug fixed 2026-07-11. Stress testing overhauled 2026-07-12: swapped Dot-com Bust for 2023 Regional Banking Crisis + 2026 Iran War, added 4 parametric shock scenarios (Rates ±100bps, Equities -20%, No Stress) as a separate sensitivity-based methodology — see status.md for full writeup. Pending: real CI/CD, Dockerization, Excel report format (deferred), orphaned analyze-event AI endpoint (found 2026-07-12).
 
 ---
 

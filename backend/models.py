@@ -151,14 +151,15 @@ class PositionChangeLog(Base):
 class RiskMetric(Base):
     __tablename__ = "Risk_Metrics"
 
-    metric_id    = Column(Integer, primary_key=True, index=True)
-    portfolio_id = Column(Integer, ForeignKey("Portfolios.portfolio_id"), nullable=False)
-    computed_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
-    var_data     = Column(Text)   # JSON
-    stress_data  = Column(Text)   # JSON
-    factor_data  = Column(Text)   # JSON
-    price_date   = Column(Date)
-    status       = Column(String(50), default="completed")
+    metric_id       = Column(Integer, primary_key=True, index=True)
+    portfolio_id    = Column(Integer, ForeignKey("Portfolios.portfolio_id"), nullable=False)
+    computed_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+    var_data        = Column(Text)   # JSON
+    stress_data     = Column(Text)   # JSON — historical-replay scenarios
+    factor_data     = Column(Text)   # JSON
+    parametric_data = Column(Text)   # JSON — sensitivity-based shock scenarios
+    price_date      = Column(Date)
+    status          = Column(String(50), default="completed")
 
     portfolio = relationship("Portfolio")
 

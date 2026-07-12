@@ -237,12 +237,98 @@ def compute_factor_exposure(db: Session, portfolio_id: int) -> Dict[str, Any]:
     return {"factors": factors, "market_interp": interp, "observations": len(port_r)}
 
 
+# Sensitivity-based (parametric) shocks — a different methodology from the
+# historical-replay SCENARIOS above: instead of replaying an actual past price
+# path, a factor shift (rates, equities) is applied to today's book via a
+# computed sensitivity. Two channels, since bonds and equities reprice
+# differently to a rate move:
+#   - Fixed income: standard duration approximation, price_change ~= -duration * delta_yield
+#   - Equities: reuses the Market beta already computed by compute_factor_exposure()
+# FIXED_INCOME_DURATION_PROXY is a flat approximation (~AGG's actual published
+# duration) applied to every Security.sector == "Fixed Income" position, since
+# Securities has no per-security duration field yet. Equity rate-sensitivity
+# (growth stocks are more rate-sensitive than value) is deliberately not
+# modeled in v1 — flagged via "note" in the result rather than guessed at.
+FIXED_INCOME_DURATION_PROXY = 6.0  # years
+
+PARAMETRIC_SHOCKS = [
+    {"name": "Rates +100bps",        "kind": "rate",   "delta": 0.01},
+    {"name": "Rates -100bps",        "kind": "rate",   "delta": -0.01},
+    {"name": "Equities -20%",        "kind": "equity", "delta": -0.20},
+    {"name": "No Stress (Baseline)", "kind": "none",   "delta": 0.0},
+]
+
+
+def run_parametric_shocks(
+    db: Session, portfolio_id: int, market_beta: Optional[float]
+) -> List[Dict[str, Any]]:
+    rows = (
+        db.query(Position.quantity, Security.ticker_symbol, Security.sector)
+        .join(Security, Position.security_id == Security.security_id)
+        .filter(Position.portfolio_id == portfolio_id)
+        .all()
+    )
+    if not rows:
+        return []
+
+    tickers = [r.ticker_symbol for r in rows]
+    quantities = [float(r.quantity) for r in rows]
+    sector_by_ticker = {r.ticker_symbol: r.sector for r in rows}
+
+    cur_prices = _download_prices(tickers, period="1mo")
+    weights = _real_weights(tickers, quantities, cur_prices)
+    if not weights:
+        return []
+
+    fi_weight = sum(w for t, w in weights.items() if sector_by_ticker.get(t) == "Fixed Income")
+
+    results: List[Dict[str, Any]] = []
+    for shock in PARAMETRIC_SHOCKS:
+        if shock["kind"] == "rate":
+            impact = sum(
+                w * (-FIXED_INCOME_DURATION_PROXY * shock["delta"])
+                for t, w in weights.items()
+                if sector_by_ticker.get(t) == "Fixed Income"
+            )
+            results.append({
+                "name":                    shock["name"],
+                "methodology":             "duration_proxy",
+                "portfolio_impact_pct":    round(impact * 100, 2),
+                "fixed_income_weight_pct": round(fi_weight * 100, 1),
+                "duration_proxy_years":    FIXED_INCOME_DURATION_PROXY,
+            })
+        elif shock["kind"] == "equity":
+            if market_beta is None:
+                results.append({
+                    "name": shock["name"], "methodology": "market_beta",
+                    "portfolio_impact_pct": None,
+                    "note": "Market beta unavailable for this portfolio",
+                })
+            else:
+                impact = market_beta * shock["delta"]
+                results.append({
+                    "name":                 shock["name"],
+                    "methodology":          "market_beta",
+                    "portfolio_impact_pct": round(impact * 100, 2),
+                    "market_beta":          round(market_beta, 3),
+                })
+        else:
+            results.append({
+                "name": shock["name"], "methodology": "baseline",
+                "portfolio_impact_pct": 0.0,
+            })
+    return results
+
+
 def compute_all(db: Session, portfolio_id: int) -> Dict[str, Any]:
     logger.info(f"[RiskAnalytics] Computing all metrics for portfolio {portfolio_id}")
+    factor_exposure = compute_factor_exposure(db, portfolio_id)
+    market_beta = factor_exposure.get("factors", {}).get("Market", {}).get("beta")
     return {
-        "portfolio_id":    portfolio_id,
-        "computed_at":     datetime.utcnow().isoformat(),
-        "var":             compute_var(db, portfolio_id),
-        "stress_tests":    run_stress_tests(db, portfolio_id),
-        "factor_exposure": compute_factor_exposure(db, portfolio_id),
+        "portfolio_id":       portfolio_id,
+        "computed_at":        datetime.utcnow().isoformat(),
+        "var":                compute_var(db, portfolio_id),
+        "stress_tests":       run_stress_tests(db, portfolio_id),
+        "factor_exposure":    factor_exposure,
+        "parametric_shocks":  run_parametric_shocks(db, portfolio_id, market_beta),
     }
