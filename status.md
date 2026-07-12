@@ -57,6 +57,8 @@
   - `ai_recommendation_engine.py` → POST /api/analysis/ai/recommendations
   - All combine: PortfolioAnalyzer data + ChromaDB RAG context + GPT-4o
 
+- ⚠️ Pending (found 2026-07-12): `ai_event_analyzer.py`'s `/api/analysis/ai/analyze-event` is built and working (structured event impact + RAG context + Claude Opus narrative) but has no UI entry point — `frontend/lib/api.ts` has an `aiAnalyzeEvent()` client function, but grepping the whole frontend shows it's never called from any page/component. A working capability sitting unused; revisit adding a button on the market-events detail page.
+
 - ✅ Task 3.3: RAG System with ChromaDB — fully loaded on both local and AWS
   - ChromaDB running at localhost:8001 (Docker container `FinSight_AI_chromadb`)
   - Live pipeline: `finnhub_news_producer.py` → Kafka → Flink → ChromaDB (polls every 2 min, ~50–150 unique articles/day)
@@ -184,10 +186,12 @@
 ### Phase 5: Advanced Features — IN PROGRESS
 
 - ✅ Task 5.1: Advanced Risk Analytics — COMPLETED
-  - `backend/services/risk_analytics.py` — Historical VaR (95%/99%, 1-day/10-day), parametric VaR, 6 stress tests (2008 Crisis, COVID, Rate Shock, Dot-com Bust, Oil Shock, Stagflation), factor exposure (OLS regression vs SPY/IWD/IWF/MTUM/USMV)
+  - `backend/services/risk_analytics.py` — Historical VaR (95%/99%, 1-day/10-day), parametric VaR, 5 stress tests (2008 Financial Crisis, COVID Crash, 2022 Rate Shock, 2023 Regional Banking Crisis, 2026 Iran War — swapped from an original 4 that included Dot-com Bust, see 2026-07-12 note below), factor exposure (OLS regression vs SPY/IWD/IWF/MTUM/USMV)
   - `backend/scripts/risk_job.py` — loops all portfolios, saves to `Risk_Metrics` table; runs daily 17:30 ET via AWS EventBridge → SSM → Flink EC2
   - `backend/routers/risk.py` — `GET /api/risk/{id}` (latest), `POST /api/risk/{id}/refresh` (on-demand, ~10-30s), `GET /api/risk/{id}/history?days=30` (trend data)
-  - Frontend Risk Analytics tab: VaR grid, 6 stress test cards, factor exposure bar chart + table, VaR trend chart
+  - Frontend Risk Analytics tab: VaR grid, stress test cards, factor exposure bar chart + table, VaR trend chart
+
+- ✅ Stress scenario update (2026-07-12): swapped "Dot-com Bust" (2000-2002) out of `SCENARIOS` in `risk_analytics.py`. Its window predates several now-common ETFs (e.g. AGG launched 2003, GLD launched 2004), and the impact calc doesn't renormalize for missing tickers — it just sums `weight × return` over whatever has price data, so any portfolio holding a post-2002 instrument got a silently understated, partial-coverage result (confirmed live: portfolio 1 showed "3/5 tickers" for this scenario). Replaced with two real, well-documented, fully-covered events: **2023 Regional Banking Crisis** (SVB/Signature/First Republic failures, `2023-03-08` to `2023-05-01` — KRE regional bank ETF fell ~30% in the first two weeks alone) and **2026 Iran War / Operation Epic Fury** (`2026-02-28` to `2026-03-30` — US/Israel strikes killed Iran's Supreme Leader, Iran retaliated against Strait of Hormuz oil infrastructure; S&P 500 fell ~8% peak-to-trough, sharp sector dispersion with energy up ~40% YTD while growth/tech lagged). Verified locally: both new scenarios return 5/5 ticker coverage on every tested portfolio. Also fixed a stale, already-inaccurate MCP tool docstring (`get_portfolio_risk` in `mcp_server.py`) that claimed "6 stress tests" including "Oil Shock, Stagflation" — those never existed in the actual code; corrected to the real 5-scenario list.
 
 - ✅ Task 5.2: Alert System — COMPLETED, all three alert types (2026-07-10/11)
   - `backend/services/alert_engine.py` — threshold alerts fire on VaR 95% > 2% (warning), VaR 99% > 3.5% (critical), stress < -25% (warning), stress < -40% (critical), market beta > 1.5 (warning); dedup: one alert per title per portfolio per day
@@ -294,7 +298,7 @@ Local dev still reads these from `backend/.env` directly. Production (EC2) sourc
 | 6 — Infrastructure | 🔄 In Progress | Backend cloud deploy ✅ (6.3 partial) · 6.2 Redis/Valkey caching ✅ · 6.4 JWT auth ✅ · Dockerization, real CI/CD still pending |
 | 7 — Security Hardening | 🔄 In Progress | 7.2 AWS Secrets Manager + SSM Parameter Store ✅ · 7.1 HTTPS/TLS already covered by existing nginx+Certbot setup |
 
-**Current Focus**: All of Phase 5 is now complete and deployed, including Task 5.4 (PDF report generation) as of 2026-07-11. The Overview tab volatility/percentage display bug found while building the report, and a Risk Analytics alert panel bug found during a later user review (panel not hiding once fully read), are both fixed and deployed (see dedicated entries above). Task 7.2 (AWS Secrets Manager + SSM Parameter Store) is also complete and deployed — the backend EC2 now pulls all real credentials from AWS via its IAM role, with the plaintext `.env` stripped down to non-secret config only. The ChromaDB EC2 runs four services together (ChromaDB, backend, MCP server, Valkey) after being resized t3.micro → t3.small to fit them; the MCP server was also relocated there from the market-hours-only Flink EC2. Next: retire the stale pre-auth MCP server still sitting on the Flink EC2, real CI/CD, Dockerization.
+**Current Focus**: All of Phase 5 is now complete and deployed, including Task 5.4 (PDF report generation) as of 2026-07-11. The Overview tab volatility/percentage display bug found while building the report, and a Risk Analytics alert panel bug found during a later user review (panel not hiding once fully read), are both fixed and deployed (see dedicated entries above). Task 7.2 (AWS Secrets Manager + SSM Parameter Store) is also complete and deployed — the backend EC2 now pulls all real credentials from AWS via its IAM role, with the plaintext `.env` stripped down to non-secret config only. The ChromaDB EC2 runs four services together (ChromaDB, backend, MCP server, Valkey) after being resized t3.micro → t3.small to fit them; the MCP server was also relocated there from the market-hours-only Flink EC2. Next: retire the stale pre-auth MCP server still sitting on the Flink EC2, real CI/CD, Dockerization, wire up the orphaned `analyze-event` AI endpoint to the market-events detail page (see pending item above).
 
 **Known Runtime Issues**:
 - ChromaDB container not running locally → `search_market_context` returns "unavailable" (graceful degradation works; start `FinSight_AI_chromadb` docker container to restore RAG)

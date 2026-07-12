@@ -16,7 +16,8 @@ SCENARIOS = [
     {"name": "2008 Financial Crisis", "label": "Sep 2008 – Mar 2009", "start": "2008-09-01", "end": "2009-03-31"},
     {"name": "COVID Crash", "label": "Feb – Mar 2020", "start": "2020-02-19", "end": "2020-03-23"},
     {"name": "2022 Rate Shock", "label": "Jan – Oct 2022", "start": "2022-01-01", "end": "2022-10-13"},
-    {"name": "Dot-com Bust", "label": "Mar 2000 – Oct 2002", "start": "2000-03-10", "end": "2002-10-09"},
+    {"name": "2023 Regional Banking Crisis", "label": "Mar – May 2023", "start": "2023-03-08", "end": "2023-05-01"},
+    {"name": "2026 Iran War", "label": "Feb – Mar 2026", "start": "2026-02-28", "end": "2026-03-30"},
 ]
 
 FACTOR_PROXIES = {

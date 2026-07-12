@@ -355,6 +355,7 @@ LLM_CONFIG = {
    - Input: Event data, affected securities
    - Output: Impact assessment and exposure analysis
    - Considers: Direct holdings, sector correlations, geographic exposure
+   - ⚠️ **Pending (found 2026-07-12)**: built and working end-to-end (`POST /api/analysis/ai/analyze-event`), but never wired to the frontend — `aiAnalyzeEvent()` exists in `frontend/lib/api.ts` and is called from nowhere. Revisit: add a "Deep AI Analysis" button on the market-events detail page.
 
 4. **Recommendation Engine** (`ai_recommendation_engine.py`)
    - Input: Portfolio state, risk profile, market conditions

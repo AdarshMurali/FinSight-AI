@@ -262,8 +262,8 @@ def get_portfolio_risk(portfolio_id: int) :
     """
     Get the latest computed risk metrics for a portfolio:
     - VaR (Value at Risk): historical 95%/99%, parametric, 1-day and 10-day
-    - 6 stress tests: 2008 Crisis, COVID Crash, Rate Shock, Dot-com Bust,
-      Oil Shock, Stagflation — showing portfolio impact %
+    - 5 stress tests: 2008 Financial Crisis, COVID Crash, 2022 Rate Shock,
+      2023 Regional Banking Crisis, 2026 Iran War — showing portfolio impact %
     - Factor exposure: market beta, tech beta, value/growth/momentum betas
     Returns 'not_computed' status if the daily risk job has not run yet.
     Use refresh_portfolio_risk to trigger a fresh calculation.
