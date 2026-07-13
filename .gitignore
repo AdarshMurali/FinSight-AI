@@ -123,3 +123,17 @@ yarn-error.log*
 *.key
 *.crt
 *.p12
+
+.vercel
+.env*
+
+# ── Hackathon submission collateral (not part of the codebase) ────────────
+challenges.md
+demo_video_script.md
+*.pptx
+*.pdf
+
+# ── Stray / scratch files ──────────────────────────────────────────────────
+reference_color.png
+abc.md
+what changed in may.md
