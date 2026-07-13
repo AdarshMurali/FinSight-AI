@@ -4,8 +4,10 @@ import time
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 
 from config import settings
 from database import test_connection, engine
@@ -88,6 +90,23 @@ app.include_router(analysis.router,      prefix="/api/analysis",      tags=["Ana
 app.include_router(ws_router,            tags=["WebSocket"])          # /ws  (no prefix)
 app.include_router(risk_router,   prefix="/api/risk",   tags=["Risk Analytics"])
 app.include_router(alerts_router, prefix="/api/alerts", tags=["Alerts"])
+
+
+@app.exception_handler(OperationalError)
+async def db_cold_start_handler(request: Request, exc: OperationalError):
+    # Azure SQL auto-pauses after ~1hr idle and takes ~20-40s to wake on the
+    # next connection attempt. A fresh request landing during that window
+    # would otherwise surface as a bare, unhelpful 500 — this turns it into
+    # a distinguishable 503 the frontend can retry against automatically.
+    logger.warning(f"[DB] OperationalError on {request.url.path} — likely a cold-start wake: {exc}")
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "The database is warming up after a period of inactivity — this can take up to a minute.",
+            "code": "db_warming_up",
+        },
+        headers={"Retry-After": "5"},
+    )
 
 
 @app.get("/")

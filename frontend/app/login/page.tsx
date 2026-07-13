@@ -11,18 +11,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [warmingUp, setWarmingUp] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setWarmingUp(false);
     setSubmitting(true);
     try {
-      await login(email, password);
+      await login(email, password, () => setWarmingUp(true));
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid email or password");
     } finally {
       setSubmitting(false);
+      setWarmingUp(false);
     }
   };
 
@@ -84,6 +87,24 @@ export default function LoginPage() {
             />
           </div>
 
+          {warmingUp && (
+            <div
+              className="flex items-start gap-2.5 px-3 py-2.5"
+              style={{ background: "rgba(255,179,0,0.08)", border: "1px solid rgba(255,179,0,0.25)" }}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full mt-1 shrink-0 animate-pulse"
+                style={{ background: "#FFB300" }}
+              />
+              <p className="text-[10.5px] leading-relaxed" style={{ color: "#E8C090" }}>
+                <span className="font-bold tracking-wide" style={{ color: "#FFB300" }}>SYSTEM WARMING UP — </span>
+                our database sleeps after a period of inactivity to save cost, and takes up to a minute
+                to wake on the first request. This only happens occasionally — hang tight, you&apos;ll be
+                signed in automatically once it&apos;s ready.
+              </p>
+            </div>
+          )}
+
           {error && (
             <p className="text-[11px]" style={{ color: "#FF4040" }}>
               {error}
@@ -96,7 +117,7 @@ export default function LoginPage() {
             className="w-full py-2.5 text-[11px] font-bold tracking-[0.15em] uppercase transition-opacity disabled:opacity-50"
             style={{ background: "linear-gradient(to right, #FF8000, #7A2500)", color: "#000" }}
           >
-            {submitting ? "Signing in…" : "Sign In"}
+            {warmingUp ? "Warming up…" : submitting ? "Signing in…" : "Sign In"}
           </button>
         </form>
 

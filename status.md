@@ -1,5 +1,5 @@
 ## Project Status — FinSight AI
-**Last Updated**: 2026-07-11 (Fixed and deployed the Overview tab volatility/percentage display bug found while building Task 5.4)
+**Last Updated**: 2026-07-13 (Graceful Azure SQL cold-start UX on login — see below)
 
 ---
 
@@ -278,6 +278,13 @@
   - Fix: pass `unread_only: true` on fetch, and have "MARK ALL READ" clear local state (`setRiskAlerts([])`) instead of just flagging items read — matching the single-dismiss behavior. Panel now hides once nothing's unread, as expected. Simplified the now-dead read/unread conditional styling in the render (opacity dimming, conditional X button) since every item in the list is guaranteed unread by construction.
   - `frontend/app/portfolios/[id]/page.tsx` only — frontend-only change, no backend/EC2 deploy needed, shipped via Vercel's git auto-deploy on push to `adarsh` (commit `c45774c`).
   - Verified locally: portfolio 1 (previously "0 unread" but showing a full dimmed history) now shows no panel at all on the Risk Analytics tab. Didn't live-click-test "MARK ALL READ" itself — local dev and the EC2 backend share the same Azure SQL database (not separate instances), and zero alerts were unread anywhere for the test account at verification time, so forcing one back to unread would have meant mutating real data just for the test. Confidence instead comes from the fetch-side fix being directly confirmed correct plus the handler being a straightforward two-line change.
+
+- ✅ Graceful Azure SQL cold-start UX on login — COMPLETE, deployed (2026-07-13)
+  - Found by user: hitting the login page right as Azure SQL was auto-paused (idle ~1hr+) surfaced a raw, unhelpful failure — the frontend just showed `"API /auth/login → 500"` since nothing distinguished a DB cold-start from a genuine server error or wrong password.
+  - Backend: new global `@app.exception_handler(OperationalError)` in `main.py` — converts an unhandled DB connection error (from *any* endpoint, not just login) into a clean `503` with `{"detail": "...", "code": "db_warming_up"}` + a `Retry-After` header, instead of a bare 500.
+  - Frontend: `lib/api.ts`'s shared `apiFetch` and the standalone `login()` function now recognize `code: "db_warming_up"` specifically and auto-retry (10 attempts, 5s apart — up to ~50s, matching the "up to a minute" cold-start window) before giving up, invoking an optional `onColdStart` callback on each retry.
+  - Login page: shows a distinct, warm banner ("SYSTEM WARMING UP — our database sleeps after a period of inactivity...") instead of a red error box while retries are in flight, button reads "Warming up…", and the user is signed in automatically the moment the DB responds — no manual re-submit needed.
+  - Verified with a controlled test server simulating 2 cold-start 503s then success: banner appeared immediately on submit, button correctly disabled/relabeled, auto-navigated to the dashboard once the simulated DB "woke up" — confirmed via real browser snapshots at each stage. Also confirmed the normal (non-cold-start) login path is unaffected — instant, single request, no regression.
 
 ---
 

@@ -1,17 +1,42 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    credentials: "include",   // send the httpOnly JWT cookie (Task 6.4)
-    headers: {
-      "Content-Type": "application/json",
-      "ngrok-skip-browser-warning": "1",   // bypass ngrok free-tier interstitial
-      ...(options?.headers ?? {}),
-    },
-  });
-  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
-  return res.json();
+// Azure SQL auto-pauses after ~1hr idle and takes up to a minute to wake on
+// the next request. The backend surfaces this as a 503 with a recognizable
+// code (see main.py's OperationalError handler) rather than a bare 500, so
+// callers can retry transparently instead of surfacing a raw failure.
+const COLD_START_MAX_ATTEMPTS = 10;
+const COLD_START_RETRY_DELAY_MS = 5000;
+
+async function isColdStartResponse(res: Response): Promise<boolean> {
+  if (res.status !== 503) return false;
+  try {
+    const body = await res.clone().json();
+    return body?.code === "db_warming_up";
+  } catch {
+    return false;
+  }
+}
+
+async function apiFetch<T>(path: string, options?: RequestInit, onColdStart?: () => void): Promise<T> {
+  for (let attempt = 1; attempt <= COLD_START_MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(`${BASE}${path}`, {
+      ...options,
+      credentials: "include",   // send the httpOnly JWT cookie (Task 6.4)
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "1",   // bypass ngrok free-tier interstitial
+        ...(options?.headers ?? {}),
+      },
+    });
+    if (await isColdStartResponse(res) && attempt < COLD_START_MAX_ATTEMPTS) {
+      onColdStart?.();
+      await new Promise(r => setTimeout(r, COLD_START_RETRY_DELAY_MS));
+      continue;
+    }
+    if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+    return res.json();
+  }
+  throw new Error(`API ${path} → 503 (database still warming up)`);
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -22,18 +47,26 @@ export interface CurrentUser {
   role: "fund_manager" | "admin";
 }
 
-export async function login(email: string, password: string): Promise<CurrentUser> {
-  const res = await fetch(`${BASE}/auth/login`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || "Invalid email or password");
+export async function login(email: string, password: string, onColdStart?: () => void): Promise<CurrentUser> {
+  for (let attempt = 1; attempt <= COLD_START_MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(`${BASE}/auth/login`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (await isColdStartResponse(res) && attempt < COLD_START_MAX_ATTEMPTS) {
+      onColdStart?.();
+      await new Promise(r => setTimeout(r, COLD_START_RETRY_DELAY_MS));
+      continue;
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || "Invalid email or password");
+    }
+    return res.json();
   }
-  return res.json();
+  throw new Error("Database still warming up — please try again in a moment.");
 }
 
 export const logout = () =>
