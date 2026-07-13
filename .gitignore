@@ -137,3 +137,12 @@ demo_video_script.md
 reference_color.png
 abc.md
 what changed in may.md
+
+# ── Internal dev-notes / one-off docs (not needed for review) ─────────────
+CHROMADB_DATA_INVENTORY.md
+CHROMADB_SETUP_SUMMARY.md
+PHASE2_COMPLETED.md
+flink.md
+architecture.png
+architecture.svg
+_generate_architecture.py
