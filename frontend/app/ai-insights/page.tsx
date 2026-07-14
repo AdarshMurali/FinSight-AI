@@ -3,7 +3,7 @@ import { useEffect, useState, Suspense, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { getPortfolios, aiExplainPortfolio, aiNarrateChanges, aiRecommendations, Portfolio } from "@/lib/api";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { Sparkles, Brain, TrendingUp, Lightbulb, ChevronDown, ChevronUp, Zap, Database } from "lucide-react";
+import { Sparkles, Brain, TrendingUp, Lightbulb, ChevronDown, ChevronUp, Zap, Database, type LucideIcon } from "lucide-react";
 
 // ── Inline bold parser (avoids dangerouslySetInnerHTML) ───────────────────
 function InlineText({ text }: { text: string }) {
@@ -12,7 +12,7 @@ function InlineText({ text }: { text: string }) {
     <>
       {parts.map((part, i) =>
         part.startsWith("**") && part.endsWith("**")
-          ? <strong key={i} className="text-[#e8e8f0] font-semibold">{part.slice(2, -2)}</strong>
+          ? <strong key={i} className="text-[#E0E0E0] font-semibold">{part.slice(2, -2)}</strong>
           : <span key={i}>{part}</span>
       )}
     </>
@@ -33,7 +33,7 @@ function SmartText({ text, bulletColor }: { text: string; bulletColor: string })
         {bullets.map((b, i) => (
           <li key={i} className="flex gap-2.5 items-start">
             <span className={`mt-[7px] w-1.5 h-1.5 rounded-full shrink-0 ${bulletColor}`} />
-            <span className="text-[#9898b0] text-xs leading-6"><InlineText text={b} /></span>
+            <span className="text-[#888] text-xs leading-6"><InlineText text={b} /></span>
           </li>
         ))}
       </ul>
@@ -44,7 +44,7 @@ function SmartText({ text, bulletColor }: { text: string; bulletColor: string })
   const flushPara = (key: string | number) => {
     if (!paraLines.length) return;
     result.push(
-      <p key={`p-${key}`} className="text-[#9898b0] text-xs leading-6">
+      <p key={`p-${key}`} className="text-[#888] text-xs leading-6">
         <InlineText text={paraLines.join(" ")} />
       </p>
     );
@@ -74,7 +74,7 @@ function SmartText({ text, bulletColor }: { text: string; bulletColor: string })
       flushPara(i);
       const label = t.replace(/^\*\*|\*\*:?$|:$/g, "").trim();
       result.push(
-        <p key={`h-${i}`} className="text-[#c8c8e0] font-semibold text-[10px] mt-5 mb-1 uppercase tracking-widest">
+        <p key={`h-${i}`} className="text-[#E0E0E0] font-bold text-[10px] mt-5 mb-1 uppercase tracking-widest">
           {label}
         </p>
       );
@@ -95,10 +95,10 @@ function RagSources({ sources }: { sources: { collection: string; snippet: strin
   const [open, setOpen] = useState(false);
   if (!sources.length) return null;
   return (
-    <div className="pt-3 border-t border-[#2a2a3a]">
+    <div className="pt-3 border-t border-[#1A1A1A]">
       <button
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 text-[#5a5a70] text-[10px] hover:text-[#9898b0] transition-colors"
+        className="flex items-center gap-1.5 text-[#555] text-[10px] hover:text-[#888] transition-colors"
       >
         <Database size={10} />
         {open ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
@@ -107,9 +107,9 @@ function RagSources({ sources }: { sources: { collection: string; snippet: strin
       {open && (
         <div className="mt-2 space-y-1.5">
           {sources.map((s, i) => (
-            <div key={i} className="flex gap-2 text-[10px] bg-[#0a0a14] rounded-md px-2.5 py-1.5 border border-[#1e1e2e]">
-              <span className="text-[#a78bfa] font-mono shrink-0 opacity-80">{s.collection}</span>
-              <span className="text-[#4a4a60] truncate">{s.snippet}</span>
+            <div key={i} className="flex gap-2 text-[10px] bg-black px-2.5 py-1.5 border border-[#1A1A1A]">
+              <span className="text-[#F5821F] font-mono shrink-0 opacity-80">{s.collection}</span>
+              <span className="text-[#555] truncate">{s.snippet}</span>
             </div>
           ))}
         </div>
@@ -121,13 +121,39 @@ function RagSources({ sources }: { sources: { collection: string; snippet: strin
 // ── Cost tag ──────────────────────────────────────────────────────────────
 function CostTag({ cost }: { cost: number }) {
   return (
-    <span className="text-[#3a3a55] text-[9px] font-mono border border-[#2a2a3a] rounded px-1.5 py-0.5 bg-[#0a0a14]">
+    <span className="text-white/70 text-[9px] font-mono border border-white/25 px-1.5 py-0.5 bg-black/15 shrink-0">
       ${cost.toFixed(4)} cost
     </span>
   );
 }
 
-// ── 1. Portfolio State Explanation  (blue) ────────────────────────────────
+// ── Shared orange gradient panel header (matches dashboard PanelHeader) ────
+function PanelHeaderBar({
+  icon: Icon, title, sub, right,
+}: {
+  icon: LucideIcon;
+  title: string;
+  sub: string;
+  right?: ReactNode;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between px-4 py-2.5"
+      style={{ background: "linear-gradient(to right, #FF8000, #7A2500)" }}
+    >
+      <div className="flex items-center gap-2.5">
+        <Icon size={13} className="text-white" />
+        <div>
+          <p className="text-white text-[10px] font-bold tracking-[0.15em] uppercase">{title}</p>
+          <p className="text-white/60 text-[9px] tracking-widest uppercase mt-0.5">{sub}</p>
+        </div>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+// ── 1. Portfolio State Explanation  (orange bullets) ────────────────────────
 function ExplanationPanel({
   content, cost, sources,
 }: {
@@ -136,22 +162,11 @@ function ExplanationPanel({
   sources: { collection: string; snippet: string }[];
 }) {
   return (
-    <div className="rounded-xl overflow-hidden border border-[#1e3a5f]/50 bg-[#111118]">
-      <div className="flex items-center justify-between px-5 py-3.5 bg-[#0f1e35] border-b border-[#1e3a5f]/50">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#1e3a5f]/60 flex items-center justify-center shrink-0">
-            <Brain size={15} className="text-[#3b82f6]" />
-          </div>
-          <div>
-            <p className="text-[#e8e8f0] text-xs font-semibold leading-tight">Portfolio State Explanation</p>
-            <p className="text-[#3b82f6] text-[9px] uppercase tracking-widest mt-0.5">AI Analysis · GPT-4o</p>
-          </div>
-        </div>
-        <CostTag cost={cost} />
-      </div>
-      <div className="px-5 py-4 space-y-3">
-        <div className="border-l-2 border-[#3b82f6]/40 pl-4">
-          <SmartText text={content} bulletColor="bg-[#3b82f6]" />
+    <div className="border border-[#2A2A2A] bg-[#0D0D0D]">
+      <PanelHeaderBar icon={Brain} title="Portfolio State Explanation" sub="AI Analysis · GPT-4o" right={<CostTag cost={cost} />} />
+      <div className="px-4 py-4 space-y-3">
+        <div className="border-l-2 border-[#F5821F]/40 pl-4">
+          <SmartText text={content} bulletColor="bg-[#F5821F]" />
         </div>
         <RagSources sources={sources} />
       </div>
@@ -159,32 +174,21 @@ function ExplanationPanel({
   );
 }
 
-// ── 2. Position Change Narrative  (amber) ────────────────────────────────
+// ── 2. Position Change Narrative  (yellow bullets) ──────────────────────────
 function NarrativePanel({ content, cost }: { content: string; cost: number }) {
   return (
-    <div className="rounded-xl overflow-hidden border border-[#78350f]/50 bg-[#111118]">
-      <div className="flex items-center justify-between px-5 py-3.5 bg-[#1c1100] border-b border-[#78350f]/50">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#78350f]/40 flex items-center justify-center shrink-0">
-            <TrendingUp size={15} className="text-[#f59e0b]" />
-          </div>
-          <div>
-            <p className="text-[#e8e8f0] text-xs font-semibold leading-tight">Position Change Narrative</p>
-            <p className="text-[#f59e0b] text-[9px] uppercase tracking-widest mt-0.5">Last 6 Months · Timeline</p>
-          </div>
-        </div>
-        <CostTag cost={cost} />
-      </div>
-      <div className="px-5 py-4">
-        <div className="border-l-2 border-[#f59e0b]/40 pl-4">
-          <SmartText text={content} bulletColor="bg-[#f59e0b]" />
+    <div className="border border-[#2A2A2A] bg-[#0D0D0D]">
+      <PanelHeaderBar icon={TrendingUp} title="Position Change Narrative" sub="Last 6 Months · Timeline" right={<CostTag cost={cost} />} />
+      <div className="px-4 py-4">
+        <div className="border-l-2 border-[#FFB300]/40 pl-4">
+          <SmartText text={content} bulletColor="bg-[#FFB300]" />
         </div>
       </div>
     </div>
   );
 }
 
-// ── 3. AI Recommendations  (violet) ──────────────────────────────────────
+// ── 3. AI Recommendations  (green bullets) ──────────────────────────────────
 function RecommendationsPanel({
   content, cost, ruleCount,
 }: {
@@ -193,28 +197,24 @@ function RecommendationsPanel({
   ruleCount: number;
 }) {
   return (
-    <div className="rounded-xl overflow-hidden border border-[#4c1d95]/50 bg-[#111118]">
-      <div className="flex items-center justify-between px-5 py-3.5 bg-[#130c22] border-b border-[#4c1d95]/50">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#4c1d95]/40 flex items-center justify-center shrink-0">
-            <Lightbulb size={15} className="text-[#a78bfa]" />
+    <div className="border border-[#2A2A2A] bg-[#0D0D0D]">
+      <PanelHeaderBar
+        icon={Lightbulb}
+        title="AI Recommendations"
+        sub="Strategy · Optimisation"
+        right={
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1 text-[9px] text-white/80 bg-black/15 border border-white/25 px-2 py-0.5">
+              <Zap size={9} />
+              {ruleCount} rule-based signal{ruleCount !== 1 ? "s" : ""}
+            </span>
+            <CostTag cost={cost} />
           </div>
-          <div>
-            <p className="text-[#e8e8f0] text-xs font-semibold leading-tight">AI Recommendations</p>
-            <p className="text-[#a78bfa] text-[9px] uppercase tracking-widest mt-0.5">Strategy · Optimisation</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-[9px] text-[#a78bfa] bg-[#a78bfa]/10 border border-[#a78bfa]/25 rounded-full px-2 py-0.5">
-            <Zap size={9} />
-            {ruleCount} rule-based signal{ruleCount !== 1 ? "s" : ""}
-          </span>
-          <CostTag cost={cost} />
-        </div>
-      </div>
-      <div className="px-5 py-4">
-        <div className="border-l-2 border-[#a78bfa]/40 pl-4">
-          <SmartText text={content} bulletColor="bg-[#a78bfa]" />
+        }
+      />
+      <div className="px-4 py-4">
+        <div className="border-l-2 border-[#00CC44]/40 pl-4">
+          <SmartText text={content} bulletColor="bg-[#00CC44]" />
         </div>
       </div>
     </div>
@@ -277,27 +277,27 @@ function AIInsightsContent() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6 font-mono">
 
       {/* Page header */}
-      <div className="border-b border-[#2a2a3a] pb-4 flex items-center gap-3">
-        <Sparkles size={18} className="text-[#a78bfa]" />
+      <div className="border-b border-[#2A2A2A] pb-4 flex items-center gap-3">
+        <Sparkles size={18} className="text-[#F5821F]" />
         <div>
-          <h1 className="text-[#e8e8f0] text-lg font-semibold">AI Insights</h1>
-          <p className="text-[#5a5a70] text-xs">GPT-4o powered portfolio analysis with RAG context</p>
+          <h1 className="text-[#E0E0E0] text-lg font-bold tracking-wider">AI INSIGHTS</h1>
+          <p className="text-[#888] text-[10px] tracking-wider">GPT-4o POWERED PORTFOLIO ANALYSIS WITH RAG CONTEXT</p>
         </div>
       </div>
 
       {/* Controls */}
-      <div className="bg-[#111118] border border-[#2a2a3a] rounded-xl p-5 flex items-end gap-4">
+      <div className="border border-[#2A2A2A] bg-[#0D0D0D] p-4 flex items-end gap-4">
         <div className="flex-1">
-          <label className="text-[#9898b0] text-[10px] uppercase tracking-wider block mb-2">
+          <label className="text-[#888] text-[10px] uppercase tracking-wider block mb-2">
             Portfolio
           </label>
           <select
             value={selectedId}
             onChange={e => setSelectedId(Number(e.target.value))}
-            className="w-full bg-[#1a1a24] border border-[#2a2a3a] rounded-lg text-[#e8e8f0] text-xs px-3 py-2 focus:outline-none focus:border-[#a78bfa] transition-colors"
+            className="w-full bg-black border border-[#2A2A2A] text-[#E0E0E0] text-xs px-3 py-2 focus:outline-none focus:border-[#F5821F] transition-colors"
           >
             {portfolios.map(p => (
               <option key={p.portfolio_id} value={p.portfolio_id}>
@@ -309,7 +309,7 @@ function AIInsightsContent() {
         <button
           onClick={runAnalysis}
           disabled={loading || !selectedId}
-          className="flex items-center gap-2 px-5 py-2 bg-[#a78bfa] text-[#0a0a0f] rounded-lg text-xs font-semibold hover:bg-[#c4b5fd] transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+          className="flex items-center gap-2 px-5 py-2 bg-[#F5821F] text-black text-xs font-bold tracking-wider uppercase hover:bg-[#FFB300] transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
         >
           <Sparkles size={13} />
           {loading ? "Analyzing…" : "Run AI Analysis"}
@@ -320,7 +320,7 @@ function AIInsightsContent() {
       {loading && (
         <div className="space-y-2">
           <LoadingSpinner label="Running AI analysis — calling GPT-4o with RAG context…" />
-          <p className="text-[#5a5a70] text-[11px] pl-7">
+          <p className="text-[#555] text-[11px] pl-7">
             3 AI calls running in parallel. Usually takes 15–30 seconds.
           </p>
         </div>
@@ -328,7 +328,7 @@ function AIInsightsContent() {
 
       {/* Error */}
       {error && (
-        <div className="bg-[#ff4d4d]/10 border border-[#ff4d4d]/20 rounded-xl px-4 py-3 text-[#ff4d4d] text-xs">
+        <div className="border border-[#FF4040]/30 bg-[#FF4040]/10 px-4 py-3 text-[#FF4040] text-xs">
           {error}
         </div>
       )}
@@ -359,10 +359,10 @@ function AIInsightsContent() {
 
       {/* Empty state */}
       {!loading && !explanation && !error && (
-        <div className="text-center py-20 text-[#5a5a70]">
-          <Sparkles size={32} className="mx-auto mb-3 text-[#2a2a3a]" />
+        <div className="text-center py-20 text-[#555]">
+          <Sparkles size={32} className="mx-auto mb-3 text-[#2A2A2A]" />
           <p className="text-sm">Select a portfolio and click Run AI Analysis</p>
-          <p className="text-xs mt-1 text-[#3a3a50]">
+          <p className="text-xs mt-1 text-[#555]">
             Combines portfolio data, ChromaDB RAG context, and GPT-4o
           </p>
         </div>

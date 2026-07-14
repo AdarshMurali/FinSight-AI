@@ -6,10 +6,13 @@ interface SectionHeaderProps {
 
 export default function SectionHeader({ title, sub, action }: SectionHeaderProps) {
   return (
-    <div className="flex items-start justify-between mb-4">
-      <div>
-        <h2 className="text-[#e8e8f0] text-sm font-semibold tracking-wide">{title}</h2>
-        {sub && <p className="text-[#5a5a70] text-[11px] mt-0.5">{sub}</p>}
+    <div
+      className="flex items-center justify-between px-3 py-1.5"
+      style={{ background: "linear-gradient(to right, #FF8000, #7A2500)" }}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-white text-[10px] font-bold tracking-[0.18em] uppercase drop-shadow">{title}</span>
+        {sub && <span className="text-white/60 text-[9px] tracking-wider">/ {sub}</span>}
       </div>
       {action && <div>{action}</div>}
     </div>

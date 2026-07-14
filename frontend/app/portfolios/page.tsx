@@ -23,16 +23,16 @@ export default function PortfoliosPage() {
   if (loading) return <LoadingSpinner label="Loading portfolios..." />;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="border-b border-[#2a2a3a] pb-4 flex items-center gap-3">
-        <BarChart3 size={18} className="text-[#1e90ff]" />
+    <div className="max-w-6xl mx-auto space-y-6 font-mono">
+      <div className="border-b border-[#2A2A2A] pb-4 flex items-center gap-3">
+        <BarChart3 size={18} className="text-[#F5821F]" />
         <div>
-          <h1 className="text-[#e8e8f0] text-lg font-semibold">Portfolios</h1>
-          <p className="text-[#5a5a70] text-xs">{portfolios.length} portfolios</p>
+          <h1 className="text-[#E0E0E0] text-lg font-bold tracking-wider">PORTFOLIOS</h1>
+          <p className="text-[#888] text-[10px] tracking-wider">{portfolios.length} PORTFOLIOS</p>
         </div>
       </div>
 
-      <div className="bg-[#111118] border border-[#2a2a3a] rounded-lg overflow-hidden">
+      <div className="border border-[#2A2A2A] bg-black">
         <table>
           <thead>
             <tr>
@@ -48,17 +48,17 @@ export default function PortfoliosPage() {
             {portfolios.map(p => (
               <tr key={p.portfolio_id} className="cursor-pointer">
                 <td>
-                  <Link href={`/portfolios/${p.portfolio_id}`} className="text-[#1e90ff] hover:underline font-medium">
-                    {p.portfolio_name}
+                  <Link href={`/portfolios/${p.portfolio_id}`} className="text-[#F5821F] hover:text-[#FFA040] transition-colors font-bold tracking-wide text-xs">
+                    {p.portfolio_name?.toUpperCase()}
                   </Link>
-                  <p className="text-[#5a5a70] text-[10px] mt-0.5">ID: {p.portfolio_id}</p>
+                  <p className="text-[#555] text-[10px] mt-0.5">ID: {p.portfolio_id}</p>
                 </td>
-                <td className="text-[#9898b0]">{p.strategy_type || "—"}</td>
-                <td className="text-[#9898b0]">{p.currency}</td>
-                <td className="text-right text-[#e8e8f0] font-medium">{fmt(Number(p.total_value))}</td>
-                <td className="text-right text-[#9898b0]">{fmt(Number(p.cash_balance))}</td>
+                <td className="text-[#888]">{p.strategy_type || "—"}</td>
+                <td className="text-[#888]">{p.currency}</td>
+                <td className="text-right text-[#E0E0E0] font-bold tabular-nums">{fmt(Number(p.total_value))}</td>
+                <td className="text-right text-[#888] tabular-nums">{fmt(Number(p.cash_balance))}</td>
                 <td className="text-right">
-                  <Link href={`/portfolios/${p.portfolio_id}`} className="text-[#5a5a70] hover:text-[#1e90ff] transition-colors inline-flex">
+                  <Link href={`/portfolios/${p.portfolio_id}`} className="text-[#555] hover:text-[#F5821F] transition-colors inline-flex">
                     <ArrowRight size={14} />
                   </Link>
                 </td>

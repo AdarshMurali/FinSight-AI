@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getMarketEvents, MarketEvent } from "@/lib/api";
-import SectionHeader from "@/components/SectionHeader";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { Radio, ArrowRight } from "lucide-react";
 
@@ -33,27 +32,27 @@ export default function MarketEventsPage() {
   if (loading) return <LoadingSpinner label="Loading market events..." />;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="border-b border-[#2a2a3a] pb-4 flex items-center gap-3">
-        <Radio size={18} className="text-[#f5c518]" />
+    <div className="max-w-6xl mx-auto space-y-6 font-mono">
+      <div className="border-b border-[#2A2A2A] pb-4 flex items-center gap-3">
+        <Radio size={18} className="text-[#FFB300]" />
         <div>
-          <h1 className="text-[#e8e8f0] text-lg font-semibold">Market Events</h1>
-          <p className="text-[#5a5a70] text-xs">{events.length} total events</p>
+          <h1 className="text-[#E0E0E0] text-lg font-bold tracking-wider">MARKET EVENTS</h1>
+          <p className="text-[#888] text-[10px] tracking-wider">{events.length} TOTAL EVENTS</p>
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-[#5a5a70] text-[10px] uppercase tracking-wider">Type:</span>
+          <span className="text-[#555] text-[10px] uppercase tracking-wider">Type:</span>
           {EVENT_TYPES.map(t => (
             <button
               key={t}
               onClick={() => setFilter(t)}
-              className={`px-3 py-1 rounded text-[11px] transition-colors ${
+              className={`px-3 py-1 text-[11px] uppercase tracking-wide transition-colors border ${
                 filter === t
-                  ? "bg-[#1e90ff]/20 text-[#1e90ff] border border-[#1e90ff]/30"
-                  : "text-[#9898b0] hover:text-[#e8e8f0] bg-[#1a1a24]"
+                  ? "bg-[#F5821F]/15 text-[#F5821F] border-[#F5821F]/40"
+                  : "text-[#888] border-[#2A2A2A] hover:text-[#E0E0E0] hover:border-[#F5821F]/40"
               }`}
             >
               {t}
@@ -61,15 +60,15 @@ export default function MarketEventsPage() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[#5a5a70] text-[10px] uppercase tracking-wider">Impact:</span>
+          <span className="text-[#555] text-[10px] uppercase tracking-wider">Impact:</span>
           {["All", "high", "medium", "low"].map(t => (
             <button
               key={t}
               onClick={() => setImpact(t)}
-              className={`px-3 py-1 rounded text-[11px] transition-colors ${
+              className={`px-3 py-1 text-[11px] uppercase tracking-wide transition-colors border ${
                 impact === t
-                  ? "bg-[#f5c518]/20 text-[#f5c518] border border-[#f5c518]/30"
-                  : "text-[#9898b0] hover:text-[#e8e8f0] bg-[#1a1a24]"
+                  ? "bg-[#FFB300]/15 text-[#FFB300] border-[#FFB300]/40"
+                  : "text-[#888] border-[#2A2A2A] hover:text-[#E0E0E0] hover:border-[#FFB300]/40"
               }`}
             >
               {t}
@@ -78,7 +77,7 @@ export default function MarketEventsPage() {
         </div>
       </div>
 
-      <div className="bg-[#111118] border border-[#2a2a3a] rounded-lg overflow-hidden">
+      <div className="border border-[#2A2A2A] bg-black">
         <table>
           <thead>
             <tr>
@@ -96,22 +95,22 @@ export default function MarketEventsPage() {
               try { sectors = JSON.parse(ev.affected_sectors || "[]"); } catch {}
               return (
                 <tr key={ev.event_id}>
-                  <td className="text-[#9898b0] whitespace-nowrap">{ev.event_date?.slice(0, 10)}</td>
+                  <td className="text-[#888] whitespace-nowrap">{ev.event_date?.slice(0, 10)}</td>
                   <td>
-                    <Link href={`/market-events/${ev.event_id}`} className="text-[#e8e8f0] hover:text-[#1e90ff] transition-colors font-medium text-xs">
+                    <Link href={`/market-events/${ev.event_id}`} className="text-[#E0E0E0] hover:text-[#F5821F] transition-colors font-medium text-xs">
                       {ev.event_title}
                     </Link>
                     {ev.event_description && (
-                      <p className="text-[#5a5a70] text-[10px] mt-0.5 line-clamp-1">{ev.event_description}</p>
+                      <p className="text-[#555] text-[10px] mt-0.5 line-clamp-1">{ev.event_description}</p>
                     )}
                   </td>
                   <td><span className="badge badge-blue">{ev.event_type}</span></td>
                   <td>{impactBadge(ev.impact_level)}</td>
-                  <td className="text-[#9898b0] text-[10px] max-w-[160px] truncate">
+                  <td className="text-[#888] text-[10px] max-w-[160px] truncate">
                     {sectors.slice(0, 3).join(", ") || "—"}
                   </td>
                   <td className="text-right">
-                    <Link href={`/market-events/${ev.event_id}`} className="text-[#5a5a70] hover:text-[#1e90ff] transition-colors inline-flex">
+                    <Link href={`/market-events/${ev.event_id}`} className="text-[#555] hover:text-[#F5821F] transition-colors inline-flex">
                       <ArrowRight size={14} />
                     </Link>
                   </td>
@@ -121,7 +120,7 @@ export default function MarketEventsPage() {
           </tbody>
         </table>
         {filtered.length === 0 && (
-          <p className="text-[#5a5a70] text-xs text-center py-8">No events match the selected filters.</p>
+          <p className="text-[#555] text-xs text-center py-8">No events match the selected filters.</p>
         )}
       </div>
     </div>
