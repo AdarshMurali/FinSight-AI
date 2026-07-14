@@ -120,7 +120,11 @@ function AiAlertTicker({ alerts, onDismiss }: {
   onDismiss: (id: number) => void;
 }) {
   if (!alerts.length) return null;
-  const duration = Math.max(alerts.length * 8, 20); // seconds — more items = longer loop, same read speed
+  // Duration scales with total text length (not just item count) so the scroll
+  // speed stays a comfortable, constant reading pace regardless of how much
+  // content is in the loop — ~9 characters/second, floor of 45s per full loop.
+  const totalChars = alerts.reduce((sum, a) => sum + a.title.length + a.message.length, 0);
+  const duration = Math.max(totalChars / 9, 45);
 
   return (
     <div className="ticker-wrap flex items-stretch border border-[#2e2e2e] bg-[#0d0d0d] overflow-hidden">

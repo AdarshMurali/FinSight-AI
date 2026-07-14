@@ -428,8 +428,8 @@ export default function PortfolioPage() {
                         </div>
                         <p className="text-[9px] leading-relaxed" style={{ color: "#7A5030" }}>{a.message}</p>
                       </div>
-                      <button onClick={() => handleDismissRiskAlert(a.alert_id)} className="shrink-0 mt-0.5" title="Dismiss">
-                        <X size={11} style={{ color: "#5A3820" }} className="hover:text-[#FF8000] transition-colors" />
+                      <button onClick={() => handleDismissRiskAlert(a.alert_id)} className="shrink-0 mt-0.5 p-0.5" title="Mark this alert as read">
+                        <X size={11} style={{ color: "#A87860" }} className="hover:text-[#FF8000] transition-colors" />
                       </button>
                     </div>
                   );

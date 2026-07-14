@@ -305,10 +305,10 @@ export default function Sidebar() {
                         {!a.is_read && (
                           <button
                             onClick={() => handleMarkRead(a.alert_id)}
-                            className="shrink-0 mt-0.5"
-                            title="Mark as read"
+                            className="shrink-0 mt-0.5 p-0.5"
+                            title="Mark this alert as read"
                           >
-                            <X size={10} style={{ color: "#5A3820" }} className="hover:text-[#FF8000] transition-colors" />
+                            <X size={10} style={{ color: "#A87860" }} className="hover:text-[#FF8000] transition-colors" />
                           </button>
                         )}
                       </div>
