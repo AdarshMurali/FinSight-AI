@@ -95,6 +95,22 @@ tr:hover td { background: #1A1A1A; }
 }
 .alert-in { animation: slide-in 0.25s ease-out; }
 
+/* ── AI alert ticker ───────────────────────────────────────────────────────── */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.ticker-track {
+  animation: ticker-scroll linear infinite;
+  width: max-content;
+}
+.ticker-wrap:hover .ticker-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track { animation: none; }
+}
+
 /* ── Line-clamp ────────────────────────────────────────────────────────────── */
 .line-clamp-1 {
   overflow: hidden;

@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { getPortfolios, getMarketEvents, Portfolio, MarketEvent } from "@/lib/api";
+import { getPortfolios, getMarketEvents, getAlerts, markAlertRead, Portfolio, MarketEvent, AlertItem } from "@/lib/api";
 import { useWebSocket, WsMessage } from "@/hooks/useWebSocket";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { ArrowRight, ChevronRight, X } from "lucide-react";
+import { ArrowRight, ChevronRight, X, Sparkles } from "lucide-react";
 
 // ── Diverging orange scale (bright → dark) ────────────────────────────────────
 const ORANGE_SCALE = ["#FFA040", "#FF8000", "#E05C00", "#CC4400", "#993300", "#7A2500", "#5C1800", "#3D1000"];
@@ -114,6 +114,61 @@ function EventAlerts({ alerts, onDismiss }: {
   );
 }
 
+// ── AI alert ticker ───────────────────────────────────────────────────────────
+function AiAlertTicker({ alerts, onDismiss }: {
+  alerts: AlertItem[];
+  onDismiss: (id: number) => void;
+}) {
+  if (!alerts.length) return null;
+  const duration = Math.max(alerts.length * 8, 20); // seconds — more items = longer loop, same read speed
+
+  return (
+    <div className="ticker-wrap flex items-stretch border border-[#2e2e2e] bg-[#0d0d0d] overflow-hidden">
+      <div
+        className="flex items-center gap-1.5 px-3 shrink-0"
+        style={{ background: "linear-gradient(to right, #FF8000, #7A2500)" }}
+      >
+        <Sparkles size={11} className="text-white" />
+        <span className="text-white text-[9px] font-bold tracking-[0.15em] whitespace-nowrap">AI ALERTS</span>
+      </div>
+      <div className="relative flex-1 overflow-hidden">
+        <div
+          className="ticker-track flex items-center gap-10 py-2 px-4"
+          style={{ animationDuration: `${duration}s` }}
+        >
+          {[...alerts, ...alerts].map((a, i) => (
+            <div key={`${a.alert_id}-${i}`} className="flex items-center gap-2 shrink-0">
+              <span className="text-[#F5821F]">●</span>
+              {a.portfolio_id != null ? (
+                <Link
+                  href={`/portfolios/${a.portfolio_id}`}
+                  onClick={() => onDismiss(a.alert_id)}
+                  className="text-[10px] tracking-wide text-[#E0E0E0] hover:text-[#FFA040] transition-colors whitespace-nowrap"
+                >
+                  <span className="font-bold">{a.title}</span>
+                  <span className="text-[#666]"> — {a.message}</span>
+                </Link>
+              ) : (
+                <span className="text-[10px] tracking-wide text-[#E0E0E0] whitespace-nowrap">
+                  <span className="font-bold">{a.title}</span>
+                  <span className="text-[#666]"> — {a.message}</span>
+                </span>
+              )}
+              <button
+                onClick={() => onDismiss(a.alert_id)}
+                className="text-[#555] hover:text-[#9a9a9a] shrink-0"
+                title="Mark as read"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
@@ -123,7 +178,13 @@ export default function Dashboard() {
 
   const [liveValues, setLiveValues]   = useState<Record<number, LiveValue>>({});
   const [eventAlerts, setEventAlerts] = useState<EventAlert[]>([]);
+  const [aiAlerts, setAiAlerts]       = useState<AlertItem[]>([]);
   const alertIdRef = useRef(0);
+
+  const handleDismissAiAlert = (alertId: number) => {
+    setAiAlerts(prev => prev.filter(a => a.alert_id !== alertId));
+    markAlertRead(alertId).catch(() => {}); // best-effort — ticker already updated optimistically
+  };
 
   // Apply gradient background + sidebar glass effect only on the dashboard page
   useEffect(() => {
@@ -172,6 +233,17 @@ export default function Dashboard() {
 
     const tick = setInterval(() => setNow(new Date()), 1_000);
     return () => clearInterval(tick);
+  }, []);
+
+  useEffect(() => {
+    const fetchAiAlerts = () => {
+      getAlerts({ unread_only: true, limit: 50 })
+        .then(all => setAiAlerts(all.filter(a => a.alert_type === "ai")))
+        .catch(() => {});
+    };
+    fetchAiAlerts();
+    const id = setInterval(fetchAiAlerts, 60_000);
+    return () => clearInterval(id);
   }, []);
 
   const totalAUM = portfolios.reduce((sum, p) => {
@@ -235,6 +307,9 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* ── AI alert ticker ──────────────────────────────────────────────── */}
+      <AiAlertTicker alerts={aiAlerts} onDismiss={handleDismissAiAlert} />
 
       {/* ── Event alert toasts ───────────────────────────────────────────── */}
       <EventAlerts
