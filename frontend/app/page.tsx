@@ -138,25 +138,25 @@ function AiAlertTicker({ alerts, onDismiss }: {
         >
           {[...alerts, ...alerts].map((a, i) => (
             <div key={`${a.alert_id}-${i}`} className="flex items-center gap-2 shrink-0">
-              <span className="text-[#F5821F]">●</span>
+              <span className="text-[#FFA040]">●</span>
               {a.portfolio_id != null ? (
                 <Link
                   href={`/portfolios/${a.portfolio_id}`}
                   onClick={() => onDismiss(a.alert_id)}
-                  className="text-[10px] tracking-wide text-[#E0E0E0] hover:text-[#FFA040] transition-colors whitespace-nowrap"
+                  className="text-[10px] tracking-wide text-[#f7f7f2] hover:text-[#FFA040] transition-colors whitespace-nowrap"
                 >
                   <span className="font-bold">{a.title}</span>
-                  <span className="text-[#666]"> — {a.message}</span>
+                  <span className="text-[#9a9a9a]"> — {a.message}</span>
                 </Link>
               ) : (
-                <span className="text-[10px] tracking-wide text-[#E0E0E0] whitespace-nowrap">
+                <span className="text-[10px] tracking-wide text-[#f7f7f2] whitespace-nowrap">
                   <span className="font-bold">{a.title}</span>
-                  <span className="text-[#666]"> — {a.message}</span>
+                  <span className="text-[#9a9a9a]"> — {a.message}</span>
                 </span>
               )}
               <button
                 onClick={() => onDismiss(a.alert_id)}
-                className="text-[#555] hover:text-[#9a9a9a] shrink-0"
+                className="text-[#9a9a9a] hover:text-[#f7f7f2] shrink-0"
                 title="Mark as read"
               >
                 <X size={10} />
