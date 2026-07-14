@@ -2,17 +2,22 @@
 FinSight AI — EC2 Market Hours Scheduler
 =========================================
 Lambda function triggered by two EventBridge Scheduler rules:
-  - 9:20 AM ET Mon-Fri  → action=start  (starts both EC2 instances)
-  - 4:25 PM ET Mon-Fri  → action=stop   (stops both EC2 instances)
+  - 9:20 AM ET Mon-Fri  → action=start  (starts the Flink EC2 instance)
+  - 4:25 PM ET Mon-Fri  → action=stop   (stops the Flink EC2 instance)
 
 The cron already on the Flink EC2 handles pipeline start/stop:
   - 9:25 AM ET → start_pipeline.sh
   - 4:15 PM ET → stop_pipeline.sh
 
-This Lambda only manages the EC2 instances (power on/off).
+This Lambda only manages the EC2 instance (power on/off).
 NYSE holidays are checked before any action — on holidays, Lambda exits silently.
 
 Update NYSE_HOLIDAYS each January for the new year.
+
+NOTE (2026-07-14): finsight-chromadb was removed from this scheduler.
+It now also hosts the FastAPI backend, MCP server, and Redis/Valkey — all
+always-on production services — so it must never be auto-stopped. Only
+add it back if it reverts to being a dev-only, market-hours resource.
 """
 
 import boto3
@@ -21,8 +26,7 @@ import datetime
 # ── Configuration ─────────────────────────────────────────────────────────────
 REGION      = "ap-south-1"
 INSTANCE_IDS = [
-    "i-06df445415d082798",   # finsight-flink    (t3.medium)
-    "i-0d5332841d8f8da41",   # finsight-chromadb (t3.micro)
+    "i-06df445415d082798",   # finsight-flink (t3.medium) — market-hours only
 ]
 
 # NYSE holidays — update each January
