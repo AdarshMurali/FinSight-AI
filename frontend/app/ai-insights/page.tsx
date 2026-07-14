@@ -153,7 +153,7 @@ function PanelHeaderBar({
   );
 }
 
-// ── 1. Portfolio State Explanation  (orange bullets) ────────────────────────
+// ── 1. Portfolio State Explanation  (green bullets) ──────────────────────────
 function ExplanationPanel({
   content, cost, sources,
 }: {
@@ -165,8 +165,8 @@ function ExplanationPanel({
     <div className="border border-[#2A2A2A] bg-[#0D0D0D]">
       <PanelHeaderBar icon={Brain} title="Portfolio State Explanation" sub="AI Analysis · GPT-4o" right={<CostTag cost={cost} />} />
       <div className="px-4 py-4 space-y-3">
-        <div className="border-l-2 border-[#F5821F]/40 pl-4">
-          <SmartText text={content} bulletColor="bg-[#F5821F]" />
+        <div className="border-l-2 border-[#00CC44]/40 pl-4">
+          <SmartText text={content} bulletColor="bg-[#00CC44]" />
         </div>
         <RagSources sources={sources} />
       </div>
@@ -174,14 +174,14 @@ function ExplanationPanel({
   );
 }
 
-// ── 2. Position Change Narrative  (yellow bullets) ──────────────────────────
+// ── 2. Position Change Narrative  (green bullets) ────────────────────────────
 function NarrativePanel({ content, cost }: { content: string; cost: number }) {
   return (
     <div className="border border-[#2A2A2A] bg-[#0D0D0D]">
       <PanelHeaderBar icon={TrendingUp} title="Position Change Narrative" sub="Last 6 Months · Timeline" right={<CostTag cost={cost} />} />
       <div className="px-4 py-4">
-        <div className="border-l-2 border-[#FFB300]/40 pl-4">
-          <SmartText text={content} bulletColor="bg-[#FFB300]" />
+        <div className="border-l-2 border-[#00CC44]/40 pl-4">
+          <SmartText text={content} bulletColor="bg-[#00CC44]" />
         </div>
       </div>
     </div>
