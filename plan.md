@@ -722,11 +722,11 @@ cd "C:\Agentic_AI\FinSight-AI\backend"
    - Alert panel at top of Risk Analytics tab, portfolio-specific (`portfolio_id` filter)
    - Loaded alongside risk metrics when Risk tab opens
 
-**Currently implemented**: threshold alerts only. Event alerts and AI-generated alerts are stubbed (column exists, no engine yet).
+**Currently implemented**: all three types — threshold, event, and AI-generated. `generate_event_alerts()`/`run_event_alerts()` and `generate_ai_alert_for_portfolio()`/`run_ai_alerts()` were built in `backend/services/alert_engine.py` and wired into `risk_job.py` in commit `08c92c3` (2026-07-11), alongside the JWT auth work.
 
-**Pending (Task 5.2 sub-items)**:
-- **Event alerts** — when a `Market_Events` row fires (e.g. Fed rate hike), scan portfolios for exposure to affected sectors/securities and raise an `alert_type='event'` alert. Needs: event→sector mapping logic + trigger hook in `alert_engine.py`.
-- **AI-generated alerts** — GPT-4o proactively reviews a portfolio (news sentiment + positions + recent price moves) and raises a natural-language `alert_type='ai'` alert, e.g. "Heavy NVDA exposure is elevated risk given GPU export news." Needs: new function in `alert_engine.py` that calls OpenAI with portfolio + RAG context and parses the response into an Alert row.
+**Deploy gap found and fixed (2026-07-14)**: this section previously (wrongly) said event/AI alerts were "stubbed, no engine yet" — the code was real, but had never actually reached the Flink EC2, which is where `risk_job.py` runs on a schedule. That box is deployed by manual file copy (not `git clone`/`pull` like the backend EC2), and hadn't been touched since 2026-07-06/07 — five days before this feature was committed. `CLOUD_MIGRATION.md`'s 2026-07-11 log entry claiming these were "deployed to production" was conflating the backend-API deploy (which *did* happen, via git pull on the ChromaDB EC2) with this separate batch-job box. Fixed by tarring the current `backend/` (excluding `.env`/cruft) and scp'ing it over, preserving the box's own `.env`. Verified with a real manual run before trusting the schedule (same lesson as the original `risk_job.py` outage — see `CLOUD_MIGRATION.md`): 50/50 portfolios succeeded, 3 real AI alerts generated (~$0.008 total), 0 event alerts (ran without error — current event data just didn't cross the exposure threshold for any portfolio this pass, not a failure).
+
+**Known process gap, not yet fixed**: the Flink EC2 has no git repo at all, so it will silently drift out of sync again on the next `risk_job.py`/`alert_engine.py` change unless someone remembers to manually re-copy files. Worth converting it to a git deploy key clone (matching the backend EC2's pattern) next time this box needs touching.
 
 ---
 
