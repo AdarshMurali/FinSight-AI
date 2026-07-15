@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { getMarketEvent, getAffectedPortfolios, aiAnalyzeEvent, MarketEvent, AffectedPortfolio, AIEventAnalysis } from "@/lib/api";
+import { getMarketEvent, getAffectedPortfolios, getPortfolios, aiAnalyzeEvent, MarketEvent, AffectedPortfolio, AIEventAnalysis, Portfolio } from "@/lib/api";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeader from "@/components/SectionHeader";
 import { SmartText, RagSources, CostTag } from "@/components/AiTextRenderer";
@@ -16,9 +16,11 @@ function impactBadge(level: string | null) {
 
 export default function MarketEventDetail() {
   const { id } = useParams<{ id: string }>();
-  const [event, setEvent]       = useState<MarketEvent | null>(null);
-  const [affected, setAffected] = useState<AffectedPortfolio[]>([]);
-  const [loading, setLoading]   = useState(true);
+  const [event, setEvent]         = useState<MarketEvent | null>(null);
+  const [affected, setAffected]   = useState<AffectedPortfolio[]>([]);
+  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState(0);
+  const [loading, setLoading]     = useState(true);
 
   const [analyzingId, setAnalyzingId] = useState<number | null>(null);
   const [analyses, setAnalyses]       = useState<Record<number, AIEventAnalysis>>({});
@@ -26,10 +28,26 @@ export default function MarketEventDetail() {
 
   useEffect(() => {
     const eid = Number(id);
-    Promise.all([getMarketEvent(eid), getAffectedPortfolios(eid)])
-      .then(([ev, aff]) => { setEvent(ev); setAffected(aff); })
+    Promise.all([getMarketEvent(eid), getAffectedPortfolios(eid), getPortfolios()])
+      .then(([ev, aff, pf]) => {
+        setEvent(ev);
+        setAffected(aff);
+        setPortfolios(pf);
+        if (pf.length) setSelectedPortfolioId(pf[0].portfolio_id);
+      })
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Portfolio names for any portfolio we've run an analysis on, whether or
+  // not the system auto-detected it as "affected" (exposure detection relies
+  // on the event having tagged sectors/regions, which many events lack).
+  const portfolioNameById = new Map<number, string>();
+  affected.forEach(a => portfolioNameById.set(a.portfolio_id, a.portfolio_name));
+  portfolios.forEach(p => { if (!portfolioNameById.has(p.portfolio_id)) portfolioNameById.set(p.portfolio_id, p.portfolio_name); });
+
+  const analyzedPortfolioIds = Array.from(
+    new Set([...Object.keys(analyses), ...Object.keys(analysisErrors)].map(Number))
+  );
 
   async function handleAnalyze(portfolioId: number) {
     setAnalyzingId(portfolioId);
@@ -145,16 +163,46 @@ export default function MarketEventDetail() {
         )}
       </div>
 
-      {/* AI event impact analyses */}
-      {affected.map(a => {
-        const result = analyses[a.portfolio_id];
-        const err = analysisErrors[a.portfolio_id];
-        if (!result && !err) return null;
+      {/* Analyze any portfolio's exposure — independent of auto-detected "affected" list,
+          since exposure detection requires the event to have tagged sectors/regions,
+          which many events (like this one) don't have. */}
+      <div className="border border-[#2A2A2A] bg-[#0D0D0D]">
+        <SectionHeader title="AI Event Impact Analysis" sub="ANALYZE ANY PORTFOLIO'S EXPOSURE TO THIS EVENT" />
+        <div className="p-4 flex items-end gap-4">
+          <div className="flex-1">
+            <label className="text-[#888] text-[10px] uppercase tracking-wider block mb-2">Portfolio</label>
+            <select
+              value={selectedPortfolioId}
+              onChange={e => setSelectedPortfolioId(Number(e.target.value))}
+              className="w-full bg-black border border-[#2A2A2A] text-[#E0E0E0] text-xs px-3 py-2 focus:outline-none focus:border-[#F5821F] transition-colors"
+            >
+              {portfolios.map(p => (
+                <option key={p.portfolio_id} value={p.portfolio_id}>
+                  #{p.portfolio_id} — {p.portfolio_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={() => handleAnalyze(selectedPortfolioId)}
+            disabled={analyzingId === selectedPortfolioId || !selectedPortfolioId}
+            className="flex items-center gap-2 px-5 py-2 bg-[#F5821F] text-black text-xs font-bold tracking-wider uppercase hover:bg-[#FFB300] transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            <Sparkles size={13} />
+            {analyzingId === selectedPortfolioId ? "Analyzing…" : "Analyze impact"}
+          </button>
+        </div>
+      </div>
+
+      {/* AI event impact analysis results */}
+      {analyzedPortfolioIds.map(pid => {
+        const result = analyses[pid];
+        const err = analysisErrors[pid];
         return (
-          <div key={a.portfolio_id} className="border border-[#2A2A2A] bg-[#0D0D0D]">
+          <div key={pid} className="border border-[#2A2A2A] bg-[#0D0D0D]">
             <SectionHeader
               title="AI Event Impact Analysis"
-              sub={`${a.portfolio_name} · GPT-4o mini`}
+              sub={`${portfolioNameById.get(pid) ?? `Portfolio #${pid}`} · GPT-4o mini`}
               action={result ? <CostTag cost={result.llm_usage.total_cost_usd} /> : undefined}
             />
             <div className="px-4 py-4 space-y-3">
