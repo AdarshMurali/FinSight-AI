@@ -18,6 +18,7 @@ import time
 import sys
 import os
 import threading
+from typing import Optional
 from datetime import datetime, timezone
 
 import websocket
@@ -31,7 +32,7 @@ from config import (
     TICKERS,
 )
 
-producer: KafkaProducer | None = None
+producer: Optional[KafkaProducer] = None
 trade_count = 0
 last_prices: dict[str, float] = {}
 
