@@ -1,13 +1,4 @@
-# Intelligent Financial Research Agent - Development Plan
-
-## Application Name Suggestions
-1. **FinSight AI** (Recommended) - Conveys financial intelligence and insight
-2. **Prism Portfolio Intelligence** - Suggests multi-dimensional analysis
-3. **Quantum Portfolio Advisor** - Modern, institutional feel
-4. **Sentinel Financial Intelligence** - Guardian/monitoring aspect
-5. **HedgeScope AI** - Direct appeal to hedge funds
-
----
+# FinSight AI - Development Plan
 
 ## Project Overview
 An AI-powered financial research agent for hedge funds and institutional clients that:
@@ -705,7 +696,7 @@ cd "C:\Agentic_AI\FinSight-AI\backend"
 
 2. **Alert Engine** (`backend/services/alert_engine.py`)
    - VaR 95% > 2% (warning), VaR 99% > 3.5% (critical), Stress < -25% (warning), Stress < -40% (critical), Market beta > 1.5 (warning)
-   - Deduplication: one alert per title per portfolio per day
+   - Deduplication (updated 2026-07-15, see below): threshold alerts upsert by family instead of one-per-day — a persisting condition collapses into a single row with `occurrence_count`, instead of accumulating a new row every `risk_job.py` run
    - Runs automatically after each portfolio in `risk_job.py`
 
 3. **Alerts REST API** (`backend/routers/alerts.py`)
@@ -726,7 +717,18 @@ cd "C:\Agentic_AI\FinSight-AI\backend"
 
 **Deploy gap found and fixed (2026-07-14)**: this section previously (wrongly) said event/AI alerts were "stubbed, no engine yet" — the code was real, but had never actually reached the Flink EC2, which is where `risk_job.py` runs on a schedule. That box is deployed by manual file copy (not `git clone`/`pull` like the backend EC2), and hadn't been touched since 2026-07-06/07 — five days before this feature was committed. `CLOUD_MIGRATION.md`'s 2026-07-11 log entry claiming these were "deployed to production" was conflating the backend-API deploy (which *did* happen, via git pull on the ChromaDB EC2) with this separate batch-job box. Fixed by tarring the current `backend/` (excluding `.env`/cruft) and scp'ing it over, preserving the box's own `.env`. Verified with a real manual run before trusting the schedule (same lesson as the original `risk_job.py` outage — see `CLOUD_MIGRATION.md`): 50/50 portfolios succeeded, 3 real AI alerts generated (~$0.008 total), 0 event alerts (ran without error — current event data just didn't cross the exposure threshold for any portfolio this pass, not a failure).
 
-**Known process gap, not yet fixed**: the Flink EC2 has no git repo at all, so it will silently drift out of sync again on the next `risk_job.py`/`alert_engine.py` change unless someone remembers to manually re-copy files. Worth converting it to a git deploy key clone (matching the backend EC2's pattern) next time this box needs touching.
+**Known process gap — deliberately deferred, not abandoned (decided 2026-07-14, reconfirmed 2026-07-15)**: the Flink EC2 still has no git repo. Converting it ad-hoc was considered and rejected twice now — the real fix is Task 6.3 (CI/CD) setting up proper deploy auth for both EC2s at once; a one-off conversion now would just be redone differently later. Until then, use the documented manual process in `CLOUD_MIGRATION.md` ("Redeploying backend code to the Flink EC2") for any change touching `risk_job.py`/`alert_engine.py`/anything else they import, and update that file's Session Log every time.
+
+**2026-07-15 — Alert dedup/mute/portfolio-name pass, found from real user feedback (not a pre-planned task)**:
+- **Problem observed**: fund manager returning after a time away saw a wall of near-duplicate alerts — verified against production data, one portfolio had 33 alert rows generated from just 8 `risk_job.py` runs, because the old per-day dedup inserted a fresh row every single run a condition stayed breached. Separately, the bell badge (unread count) and the panel list (top 30 active alerts, mixed read/unread) didn't match, and alerts on the aggregated home-page view gave no indication of *which* portfolio they were about — five alerts about the same market event across five portfolios looked like five duplicates of one alert.
+- **Schema** (`db_migration_alerts_v2.sql`, `v3.sql`, additive, applied directly to production Azure SQL): `Alerts` gained `status` (active/resolved), `occurrence_count`, `last_triggered_at`, `resolved_at`, `read_at`.
+- **Generation logic** (`alert_engine.py`): threshold alerts (VaR/stress/beta) now upsert by "family" (title-prefix matched, so severity moving within a family — e.g. VaR warning → critical — updates the same row instead of leaving the old one stranded) instead of always inserting; a family auto-resolves once its condition clears, guarded against reading "no data this run" as "condition cleared." Re-triggering an already-read alert normally resets it to unread — except once read, it stays muted for `ALERT_MUTE_COOLDOWN_DAYS` (default 30, `.env`-configurable) unless the current severity is critical, which always bypasses the mute (a live critical risk must not go quiet for a month because it was glanced at once). Mute state survives resolve-then-reoccur (carries forward the original `read_at`, doesn't let a mute reset itself). Event alerts (already dedup forever per portfolio) and AI alerts (already capped 1/day) were confirmed already correct and left untouched.
+- **API** (`routers/alerts.py`): responses now include `portfolio_name` (joined) and the new status/occurrence fields; `GET /api/alerts` defaults to `status=active`.
+- **Frontend**: Sidebar bell panel is unread-only, no "show all" toggle (a read alert only reappears if its condition re-triggers past the cooldown — deliberately not building a history browser into the quick-glance widget); portfolio name now shown on every alert card (Sidebar panel + home page AI ticker) so multi-portfolio hits read as distinct entries, not duplicates.
+- **One-time backlog cleanup** (production Azure SQL, not part of the ongoing logic): collapsed 348 pre-existing duplicate threshold rows down to 50 accurate ones, before the new generation logic existed to prevent them going forward.
+- **Deployed and verified 2026-07-15**: commit `3a850f8`, pushed to `origin/adarsh`. Backend EC2 (`git pull` + `systemctl restart finsight-backend`) — confirmed live via `https://api.fin-sightai.space/api/alerts` returning the new fields. Flink EC2 — deployed via the documented manual process (only the 4 files that actually changed: `config.py`, `models.py`, `scripts/risk_job.py`, `services/alert_engine.py`, sha256-verified against local/GitHub), then a real manual `risk_job.py` run confirmed the new logic working in production (`"0 new, 2 bumped, 0 resolved"` style log lines instead of fresh inserts) before trusting the schedule — same discipline as the original outage postmortem. Frontend auto-deploys via Vercel on push to `adarsh`.
+- **Found and fixed while deploying, unrelated to this feature**: `last_triggered_at` was added `NOT NULL` with no server-side default in `v2.sql` — safe under the new ORM (which always sets it), but any code still running the *old* `alert_engine.py` would omit it entirely and violate the constraint. Added `DF_Alerts_last_triggered_at DEFAULT GETUTCDATE()` as a defense-in-depth safety net so old-code inserts survive regardless of deploy timing/order (folded into `v3.sql`).
+- **Regression note**: restarting `finsight-mcp.service` on the backend EC2 (to pick up the updated `models.py`) surfaced that its `FINSIGHT_MCP_TOKEN` no longer validates (`401: Invalid session`, not an expiry issue — that token is minted for 365 days). Pre-existing, unrelated to this feature — the old process had just been running continuously since before whatever broke the signature (plausibly the 2026-07-11 AWS Secrets Manager `JWT_SECRET_KEY` migration) and never needed to re-validate until now. Re-minting a fresh token requires an admin-level credential creation the safety layer correctly flagged as needing explicit sign-off — not done as part of this pass, tracked separately.
 
 ---
 
