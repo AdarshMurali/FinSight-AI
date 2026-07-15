@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { getMarketEvent, getAffectedPortfolios, MarketEvent, AffectedPortfolio } from "@/lib/api";
+import { getMarketEvent, getAffectedPortfolios, aiAnalyzeEvent, MarketEvent, AffectedPortfolio, AIEventAnalysis } from "@/lib/api";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeader from "@/components/SectionHeader";
-import { Radio } from "lucide-react";
+import { SmartText, RagSources, CostTag } from "@/components/AiTextRenderer";
+import { Radio, Sparkles } from "lucide-react";
 import Link from "next/link";
 
 function impactBadge(level: string | null) {
@@ -19,12 +20,32 @@ export default function MarketEventDetail() {
   const [affected, setAffected] = useState<AffectedPortfolio[]>([]);
   const [loading, setLoading]   = useState(true);
 
+  const [analyzingId, setAnalyzingId] = useState<number | null>(null);
+  const [analyses, setAnalyses]       = useState<Record<number, AIEventAnalysis>>({});
+  const [analysisErrors, setAnalysisErrors] = useState<Record<number, string>>({});
+
   useEffect(() => {
     const eid = Number(id);
     Promise.all([getMarketEvent(eid), getAffectedPortfolios(eid)])
       .then(([ev, aff]) => { setEvent(ev); setAffected(aff); })
       .finally(() => setLoading(false));
   }, [id]);
+
+  async function handleAnalyze(portfolioId: number) {
+    setAnalyzingId(portfolioId);
+    setAnalysisErrors(prev => { const next = { ...prev }; delete next[portfolioId]; return next; });
+    try {
+      const result = await aiAnalyzeEvent(Number(id), portfolioId);
+      setAnalyses(prev => ({ ...prev, [portfolioId]: result }));
+    } catch (e: unknown) {
+      setAnalysisErrors(prev => ({
+        ...prev,
+        [portfolioId]: e instanceof Error ? e.message : "AI event analysis failed",
+      }));
+    } finally {
+      setAnalyzingId(null);
+    }
+  }
 
   if (loading) return <LoadingSpinner label="Loading event..." />;
   if (!event) return <p className="text-[#FF4040] text-sm font-mono">Event not found.</p>;
@@ -104,10 +125,18 @@ export default function MarketEventDetail() {
                   <td className={`text-right font-medium ${a.total_weight_change >= 0 ? "positive" : "negative"}`}>
                     {a.total_weight_change >= 0 ? "+" : ""}{(a.total_weight_change * 100).toFixed(2)}%
                   </td>
-                  <td className="text-right">
-                    <Link href={`/portfolios/${a.portfolio_id}`} className="text-[#F5821F] hover:text-[#FFA040] transition-colors text-xs">
+                  <td className="text-right whitespace-nowrap">
+                    <Link href={`/portfolios/${a.portfolio_id}`} className="text-[#F5821F] hover:text-[#FFA040] transition-colors text-xs mr-3">
                       View portfolio
                     </Link>
+                    <button
+                      onClick={() => handleAnalyze(a.portfolio_id)}
+                      disabled={analyzingId === a.portfolio_id}
+                      className="inline-flex items-center gap-1 text-[#00CC44] hover:text-[#33FF77] transition-colors text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Sparkles size={11} />
+                      {analyzingId === a.portfolio_id ? "Analyzing…" : analyses[a.portfolio_id] ? "Re-analyze" : "Analyze impact"}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -115,6 +144,34 @@ export default function MarketEventDetail() {
           </table>
         )}
       </div>
+
+      {/* AI event impact analyses */}
+      {affected.map(a => {
+        const result = analyses[a.portfolio_id];
+        const err = analysisErrors[a.portfolio_id];
+        if (!result && !err) return null;
+        return (
+          <div key={a.portfolio_id} className="border border-[#2A2A2A] bg-[#0D0D0D]">
+            <SectionHeader
+              title="AI Event Impact Analysis"
+              sub={`${a.portfolio_name} · GPT-4o mini`}
+              action={result ? <CostTag cost={result.llm_usage.total_cost_usd} /> : undefined}
+            />
+            <div className="px-4 py-4 space-y-3">
+              {err ? (
+                <p className="text-[#FF4040] text-xs">{err}</p>
+              ) : (
+                <>
+                  <div className="border-l-2 border-[#00CC44]/40 pl-4">
+                    <SmartText text={result!.ai_assessment} bulletColor="bg-[#00CC44]" />
+                  </div>
+                  <RagSources sources={result!.rag_sources} />
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
 
       {event.source_url && (
         <p className="text-[#555] text-xs">

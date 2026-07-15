@@ -1042,6 +1042,7 @@ These were identified as gaps that add resume value or practical robustness. Rev
 | **ChromaDB data retention job** | Low | See Task 5.2b. Only needed once `market_news` exceeds ~50K docs or disk > 2GB. |
 | **Reddit Sentiment Pipeline** | Good to Have | Live Flink stream from r/wallstreetbets, r/investing, r/stocks via PRAW. Adds retail sentiment signal distinct from institutional data. No viable 5-year historical — live stream only (similar to market_news pipeline). Implement only if a live sentiment signal adds demo value. |
 | **BigQuery Analytics Layer** | Medium | Free forever (1 TB queries/month, 10 GB storage). See Task 7.1 below for full integration plan. Strong resume signal — classic OLTP (Azure SQL) + OLAP (BigQuery) architecture. |
+| **Live Market Events Feed** | High | Found 2026-07-15. `Market_Events` (SQL table) has no live ingestion — no scheduled job or stream keeps it current, so the market-events pages and the AI event analyzer (UI added 2026-07-15) are working against stale/incomplete event data. Needs a news/events source (API or feed) wired to either a scheduled job or a Flink pipeline, similar in shape to the existing `market_news`/`volatility_events` ChromaDB pipelines. Not started. |
 
 ---
 
