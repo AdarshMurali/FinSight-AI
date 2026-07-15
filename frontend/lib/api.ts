@@ -440,14 +440,16 @@ export const getRiskHistory = (portfolio_id: number, days = 30) =>
 
 // ── Alerts ────────────────────────────────────────────────────────────────────
 export interface AlertItem {
-  alert_id:     number;
-  portfolio_id: number | null;
-  alert_type:   "threshold" | "event" | "ai";
-  severity:     "critical" | "warning" | "info";
-  title:        string;
-  message:      string;
-  is_read:      boolean;
-  triggered_at: string;
+  alert_id:       number;
+  portfolio_id:   number | null;
+  portfolio_name: string | null;
+  alert_type:     "threshold" | "event" | "ai";
+  severity:       "critical" | "warning" | "info";
+  title:          string;
+  message:        string;
+  is_read:        boolean;
+  read_at:        string | null;
+  triggered_at:   string;
 }
 
 export const getAlerts = (params?: { portfolio_id?: number; unread_only?: boolean; limit?: number }) => {

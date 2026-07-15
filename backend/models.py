@@ -167,13 +167,18 @@ class RiskMetric(Base):
 class Alert(Base):
     __tablename__ = "Alerts"
 
-    alert_id     = Column(Integer, primary_key=True, index=True)
-    portfolio_id = Column(Integer, ForeignKey("Portfolios.portfolio_id"), nullable=True)
-    alert_type   = Column(String(50), nullable=False)   # threshold | event | ai
-    severity     = Column(String(20), nullable=False)   # critical | warning | info
-    title        = Column(String(255), nullable=False)
-    message      = Column(Text, nullable=False)
-    is_read      = Column(Integer, default=0)           # 0=unread, 1=read
-    triggered_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    alert_id           = Column(Integer, primary_key=True, index=True)
+    portfolio_id       = Column(Integer, ForeignKey("Portfolios.portfolio_id"), nullable=True)
+    alert_type         = Column(String(50), nullable=False)   # threshold | event | ai
+    severity           = Column(String(20), nullable=False)   # critical | warning | info
+    title              = Column(String(255), nullable=False)
+    message            = Column(Text, nullable=False)
+    is_read            = Column(Integer, default=0)           # 0=unread, 1=read
+    read_at            = Column(DateTime, nullable=True)      # when is_read last flipped to 1 — drives the mute cooldown
+    triggered_at       = Column(DateTime, default=datetime.utcnow, nullable=False)  # first occurrence
+    status             = Column(String(20), default="active", nullable=False)       # active | resolved
+    occurrence_count   = Column(Integer, default=1, nullable=False)
+    last_triggered_at  = Column(DateTime, default=datetime.utcnow, nullable=False)  # most recent re-trigger
+    resolved_at        = Column(DateTime, nullable=True)
 
     portfolio = relationship("Portfolio")

@@ -1,9 +1,11 @@
 import json
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from config import settings
 from models import Alert, RiskMetric, Portfolio, Position, Security, MarketEvent
 from services.portfolio_analyzer import PortfolioAnalyzer
 from services.llm_service import LLMService, PromptLibrary
@@ -24,13 +26,124 @@ EVENT_EXPOSURE_WARNING  = 0.15  # 15% combined sector+region exposure → warnin
 EVENT_EXPOSURE_CRITICAL = 0.30  # 30% combined sector+region exposure → critical
 
 
-def _already_alerted_today(db: Session, portfolio_id: int, title: str) -> bool:
-    today = date.today()
-    return db.query(Alert).filter(
-        Alert.portfolio_id == portfolio_id,
-        Alert.title == title,
-        Alert.triggered_at >= datetime(today.year, today.month, today.day),
-    ).first() is not None
+# Threshold alert "families" — a persisting condition should collapse into one row
+# even if its severity moves within the family (e.g. VaR warning -> critical), so
+# matching is by title PREFIX within a family, not exact title. Without this, an
+# escalating condition would leave its old warning-titled row stranded forever
+# unresolved while a separate critical-titled row starts accumulating.
+FAMILIES = {
+    "var":    ("Critical VaR:", "Elevated VaR:"),
+    "stress": ("Severe Stress Exposure:", "Stress Test Warning:"),
+    "beta":   ("High Market Beta:",),
+}
+
+
+def _is_muted(read_at: Optional[datetime]) -> bool:
+    """A read alert stays muted (won't resurface as unread) for
+    settings.ALERT_MUTE_COOLDOWN_DAYS after it was read."""
+    if read_at is None:
+        return False
+    return datetime.utcnow() - read_at < timedelta(days=settings.ALERT_MUTE_COOLDOWN_DAYS)
+
+
+def _most_recent_read_at(db: Session, portfolio_id: int, family: str) -> Optional[datetime]:
+    """Look across ALL statuses (active + resolved) — a condition that resolved
+    and later recurs should still respect the cooldown from when it was last read,
+    otherwise resolve-then-reoccur would be a free way to dodge the mute."""
+    prefixes = FAMILIES[family]
+    row = (
+        db.query(Alert)
+        .filter(
+            Alert.portfolio_id == portfolio_id,
+            Alert.read_at.isnot(None),
+            or_(*[Alert.title.like(f"{p}%") for p in prefixes]),
+        )
+        .order_by(Alert.read_at.desc())
+        .first()
+    )
+    return row.read_at if row else None
+
+
+def _upsert_family_alert(
+    db: Session, portfolio_id: int, family: str, title: str, severity: str, message: str,
+) -> Optional[Alert]:
+    """Collapse repeated triggers of the same condition into one row instead of
+    inserting a new one every risk_job run.
+
+    Re-triggering an already-read alert normally resets is_read to 0 so it doesn't
+    silently drop out of the unread queue. EXCEPTION: if the alert was read within
+    the last ALERT_MUTE_COOLDOWN_DAYS, it stays muted (is_read left as-is) — UNLESS
+    the current severity is "critical", which always bypasses the mute. A live
+    critical risk must never go quiet for a month just because it was glanced at
+    once; a warning/info alert reasonably can.
+
+    Returns the newly-created Alert if one was inserted, None if an existing row
+    was bumped in place (the caller only needs db.add() for genuinely new rows)."""
+    prefixes = FAMILIES[family]
+    existing = (
+        db.query(Alert)
+        .filter(
+            Alert.portfolio_id == portfolio_id,
+            Alert.status == "active",
+            or_(*[Alert.title.like(f"{p}%") for p in prefixes]),
+        )
+        .first()
+    )
+    now = datetime.utcnow()
+    if existing:
+        was_read = existing.is_read == 1
+        existing.title = title
+        existing.severity = severity
+        existing.message = message
+        existing.occurrence_count += 1
+        existing.last_triggered_at = now
+        if not was_read or severity == "critical" or not _is_muted(existing.read_at):
+            existing.is_read = 0
+        # else: still muted — leave is_read=1, read_at untouched, so the cooldown
+        # counts down from the original read, not from this re-trigger.
+        return None
+
+    # No existing active row — check whether a prior read (active or resolved)
+    # for this family is still within its mute window before surfacing as unread.
+    prior_read_at = _most_recent_read_at(db, portfolio_id, family)
+    muted = severity != "critical" and _is_muted(prior_read_at)
+
+    alert = Alert(
+        portfolio_id=portfolio_id,
+        alert_type="threshold",
+        severity=severity,
+        title=title,
+        message=message,
+        status="active",
+        occurrence_count=1,
+        triggered_at=now,
+        last_triggered_at=now,
+        is_read=1 if muted else 0,
+        read_at=prior_read_at if muted else None,
+    )
+    db.add(alert)
+    return alert
+
+
+def _resolve_family_if_absent(db: Session, portfolio_id: int, family: str) -> bool:
+    """Call once per family per portfolio when that family's condition did NOT fire
+    this run (and the underlying data was actually present — see call sites). Closes
+    any still-active alert in the family. Returns True if something was resolved."""
+    prefixes = FAMILIES[family]
+    existing = (
+        db.query(Alert)
+        .filter(
+            Alert.portfolio_id == portfolio_id,
+            Alert.status == "active",
+            or_(*[Alert.title.like(f"{p}%") for p in prefixes]),
+        )
+        .first()
+    )
+    if not existing:
+        return False
+    existing.status = "resolved"
+    existing.resolved_at = datetime.utcnow()
+    return True
 
 
 def _already_alerted_ever(db: Session, portfolio_id: int, title: str) -> bool:
@@ -50,61 +163,54 @@ def generate_threshold_alerts(
     var_data: Dict[str, Any],
     stress_tests: List[Dict[str, Any]],
     factor_data: Dict[str, Any],
-) -> List[Alert]:
-    alerts: List[Alert] = []
+) -> Dict[str, int]:
+    """Evaluate the 3 threshold families (VaR, stress, beta) for this portfolio and
+    upsert/resolve each one. A family is only resolved when its underlying data was
+    actually present this run and came back clean — missing/failed computation data
+    must never be read as "condition cleared" and silently close a real alert."""
+    counts = {"new": 0, "bumped": 0, "resolved": 0}
+
+    def _apply(new_alert: Optional[Alert]):
+        counts["new" if new_alert else "bumped"] += 1
 
     # ── VaR alerts ───────────────────────────────────────────────────────────
     hist = var_data.get("historical", {})
     var_95 = hist.get("var_95_1d_pct")
     var_99 = hist.get("var_99_1d_pct")
+    var_data_present = var_95 is not None or var_99 is not None
 
     if var_99 is not None and abs(var_99) >= VAR_99_CRITICAL:
         title = f"Critical VaR: {portfolio_name}"
-        if not _already_alerted_today(db, portfolio_id, title):
-            alerts.append(Alert(
-                portfolio_id=portfolio_id,
-                alert_type="threshold",
-                severity="critical",
-                title=title,
-                message=f"99% 1-day VaR is {abs(var_99):.2f}% — exceeds critical threshold of {VAR_99_CRITICAL}%.",
-            ))
+        message = f"99% 1-day VaR is {abs(var_99):.2f}% — exceeds critical threshold of {VAR_99_CRITICAL}%."
+        _apply(_upsert_family_alert(db, portfolio_id, "var", title, "critical", message))
     elif var_95 is not None and abs(var_95) >= VAR_95_WARNING:
         title = f"Elevated VaR: {portfolio_name}"
-        if not _already_alerted_today(db, portfolio_id, title):
-            alerts.append(Alert(
-                portfolio_id=portfolio_id,
-                alert_type="threshold",
-                severity="warning",
-                title=title,
-                message=f"95% 1-day VaR is {abs(var_95):.2f}% — exceeds warning threshold of {VAR_95_WARNING}%.",
-            ))
+        message = f"95% 1-day VaR is {abs(var_95):.2f}% — exceeds warning threshold of {VAR_95_WARNING}%."
+        _apply(_upsert_family_alert(db, portfolio_id, "var", title, "warning", message))
+    elif var_data_present:
+        if _resolve_family_if_absent(db, portfolio_id, "var"):
+            counts["resolved"] += 1
 
     # ── Stress test alerts ───────────────────────────────────────────────────
+    stress_fired = False
     for test in stress_tests:
         impact = test.get("portfolio_impact_pct", 0)
         name   = test.get("name", "Unknown Scenario")
         if impact <= STRESS_CRITICAL:
+            stress_fired = True
             title = f"Severe Stress Exposure: {portfolio_name}"
-            if not _already_alerted_today(db, portfolio_id, title):
-                alerts.append(Alert(
-                    portfolio_id=portfolio_id,
-                    alert_type="threshold",
-                    severity="critical",
-                    title=title,
-                    message=f"Stress test '{name}' shows {impact:.1f}% portfolio impact — exceeds critical threshold.",
-                ))
+            message = f"Stress test '{name}' shows {impact:.1f}% portfolio impact — exceeds critical threshold."
+            _apply(_upsert_family_alert(db, portfolio_id, "stress", title, "critical", message))
             break
         elif impact <= STRESS_WARNING:
+            stress_fired = True
             title = f"Stress Test Warning: {portfolio_name}"
-            if not _already_alerted_today(db, portfolio_id, title):
-                alerts.append(Alert(
-                    portfolio_id=portfolio_id,
-                    alert_type="threshold",
-                    severity="warning",
-                    title=title,
-                    message=f"Stress test '{name}' shows {impact:.1f}% portfolio impact — exceeds warning threshold.",
-                ))
+            message = f"Stress test '{name}' shows {impact:.1f}% portfolio impact — exceeds warning threshold."
+            _apply(_upsert_family_alert(db, portfolio_id, "stress", title, "warning", message))
             break
+    if not stress_fired and stress_tests:
+        if _resolve_family_if_absent(db, portfolio_id, "stress"):
+            counts["resolved"] += 1
 
     # ── Factor / beta alert ──────────────────────────────────────────────────
     factors = factor_data.get("factors", {})
@@ -112,16 +218,13 @@ def generate_threshold_alerts(
     beta = market_factor.get("beta")
     if beta is not None and abs(beta) >= BETA_WARNING:
         title = f"High Market Beta: {portfolio_name}"
-        if not _already_alerted_today(db, portfolio_id, title):
-            alerts.append(Alert(
-                portfolio_id=portfolio_id,
-                alert_type="threshold",
-                severity="warning",
-                title=title,
-                message=f"Market beta is {beta:.2f} — portfolio is highly sensitive to broad market moves.",
-            ))
+        message = f"Market beta is {beta:.2f} — portfolio is highly sensitive to broad market moves."
+        _apply(_upsert_family_alert(db, portfolio_id, "beta", title, "warning", message))
+    elif beta is not None:
+        if _resolve_family_if_absent(db, portfolio_id, "beta"):
+            counts["resolved"] += 1
 
-    return alerts
+    return counts
 
 
 def _parse_tag_list(value) -> List[str]:
@@ -226,7 +329,10 @@ def run_event_alerts(db: Session) -> int:
     return len(alerts)
 
 
-def run_alerts_for_portfolio(db: Session, portfolio_id: int, portfolio_name: str) -> int:
+_NO_ALERT_ACTIVITY = {"new": 0, "bumped": 0, "resolved": 0}
+
+
+def run_alerts_for_portfolio(db: Session, portfolio_id: int, portfolio_name: str) -> Dict[str, int]:
     row = (
         db.query(RiskMetric)
         .filter(RiskMetric.portfolio_id == portfolio_id)
@@ -234,23 +340,21 @@ def run_alerts_for_portfolio(db: Session, portfolio_id: int, portfolio_name: str
         .first()
     )
     if not row:
-        return 0
+        return dict(_NO_ALERT_ACTIVITY)
 
     try:
         var_data     = json.loads(row.var_data    or "{}")
         stress_tests = json.loads(row.stress_data or "[]")
         factor_data  = json.loads(row.factor_data or "{}")
     except Exception:
-        return 0
+        return dict(_NO_ALERT_ACTIVITY)
 
-    alerts = generate_threshold_alerts(
+    counts = generate_threshold_alerts(
         db, portfolio_id, portfolio_name, var_data, stress_tests, factor_data
     )
-    for alert in alerts:
-        db.add(alert)
-    if alerts:
+    if any(counts.values()):
         db.commit()
-    return len(alerts)
+    return counts
 
 
 def _ai_alert_already_generated_today(db: Session, portfolio_id: int) -> bool:

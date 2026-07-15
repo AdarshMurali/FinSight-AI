@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
 
+    # Once a threshold alert is read, suppress it from resurfacing for this many
+    # days if it re-triggers — unless it's still active AND critical, which always
+    # bypasses the mute (see alert_engine.py _upsert_family_alert).
+    ALERT_MUTE_COOLDOWN_DAYS: int = 30
+
     @property
     def database_url(self) -> str:
         is_azure = "database.windows.net" in self.DB_SERVER

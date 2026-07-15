@@ -88,7 +88,8 @@ def run():
 
     logger.info(f"[RiskJob] Starting — {len(portfolios)} portfolios")
 
-    success, failed, total_alerts = 0, 0, 0
+    success, failed = 0, 0
+    total_new, total_bumped, total_resolved = 0, 0, 0
     ai_llm = LLMService()
     ai_alert_count = 0
     for pid, pname in portfolios:
@@ -96,15 +97,19 @@ def run():
         try:
             result = compute_all(db, pid)
             save_result(db, pid, result)
-            n = run_alerts_for_portfolio(db, pid, pname)
-            total_alerts += n
+            counts = run_alerts_for_portfolio(db, pid, pname)
+            total_new += counts["new"]
+            total_bumped += counts["bumped"]
+            total_resolved += counts["resolved"]
 
             ai_alert = generate_ai_alert_for_portfolio(db, pid, pname, llm=ai_llm)
             if ai_alert:
                 ai_alert_count += 1
-                total_alerts += 1
 
-            logger.info(f"[RiskJob] Portfolio {pid} done — {n} threshold alert(s), {1 if ai_alert else 0} AI alert(s)")
+            logger.info(
+                f"[RiskJob] Portfolio {pid} done — {counts['new']} new, {counts['bumped']} bumped, "
+                f"{counts['resolved']} resolved threshold alert(s), {1 if ai_alert else 0} AI alert(s)"
+            )
             success += 1
         except Exception as e:
             logger.error(f"[RiskJob] Portfolio {pid} FAILED: {e}")
@@ -118,17 +123,21 @@ def run():
         f"${ai_usage['total_cost_usd']:.4f} spent across {ai_usage['calls']} calls"
     )
 
+    event_alert_count = 0
     db = SessionLocal()
     try:
         event_alert_count = run_event_alerts(db)
-        total_alerts += event_alert_count
         logger.info(f"[RiskJob] Event alerts — {event_alert_count} generated")
     except Exception as e:
         logger.error(f"[RiskJob] Event alert scan FAILED: {e}")
     finally:
         db.close()
 
-    logger.info(f"[RiskJob] Complete — {success} succeeded, {failed} failed, {total_alerts} alerts generated")
+    logger.info(
+        f"[RiskJob] Complete — {success} succeeded, {failed} failed, "
+        f"{total_new} new threshold alerts, {total_bumped} bumped, {total_resolved} resolved, "
+        f"{ai_alert_count} AI alerts, {event_alert_count} event alerts"
+    )
 
 
 if __name__ == "__main__":

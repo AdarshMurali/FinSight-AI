@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboard, BarChart3, Sparkles, Radio, TrendingUp, MessageSquare, Bell, X, CheckCheck, LogOut } from "lucide-react";
+import { LayoutDashboard, BarChart3, Sparkles, Radio, TrendingUp, MessageSquare, Bell, X, Check, CheckCheck, LogOut } from "lucide-react";
 import { getAlerts, getUnreadCount, markAlertRead, markAllAlertsRead, AlertItem } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
@@ -37,9 +37,13 @@ export default function Sidebar() {
   const [unreadCount, setUnreadCount] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Unread-only, always — this panel is "what needs my attention," not a history
+  // browser. A read alert only resurfaces here if the underlying condition
+  // re-triggers (subject to the backend's own mute cooldown), which naturally
+  // keeps this in sync with the bell badge count.
   const fetchAlerts = async () => {
     try {
-      const [data, uc] = await Promise.all([getAlerts({ limit: 30 }), getUnreadCount()]);
+      const [data, uc] = await Promise.all([getAlerts({ limit: 30, unread_only: true }), getUnreadCount()]);
       setAlerts(data);
       setUnreadCount(uc.count);
     } catch { /* silent */ }
@@ -64,13 +68,13 @@ export default function Sidebar() {
 
   const handleMarkRead = async (id: number) => {
     await markAlertRead(id);
-    setAlerts(prev => prev.map(a => a.alert_id === id ? { ...a, is_read: true } : a));
+    setAlerts(prev => prev.filter(a => a.alert_id !== id));
     setUnreadCount(c => Math.max(0, c - 1));
   };
 
   const handleMarkAll = async () => {
     await markAllAlertsRead();
-    setAlerts(prev => prev.map(a => ({ ...a, is_read: true })));
+    setAlerts([]);
     setUnreadCount(0);
   };
 
@@ -254,7 +258,7 @@ export default function Sidebar() {
             {alerts.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-2">
                 <Bell size={20} style={{ color: "#3A2010" }} />
-                <p className="text-[10px] tracking-wider" style={{ color: "#5A3820" }}>No alerts</p>
+                <p className="text-[10px] tracking-wider" style={{ color: "#5A3820" }}>No unread alerts</p>
               </div>
             ) : (
               <div className="divide-y" style={{ borderColor: "rgba(255,120,0,0.08)" }}>
@@ -295,6 +299,14 @@ export default function Sidebar() {
                               {timeAgo(a.triggered_at)}
                             </span>
                           </div>
+                          {a.portfolio_name && (
+                            <p
+                              className="text-[8px] font-bold tracking-[0.08em] uppercase truncate mb-0.5"
+                              style={{ color: "#B8875A" }}
+                            >
+                              {a.portfolio_name}
+                            </p>
+                          )}
                           <p className="text-[10px] font-semibold mb-0.5 truncate" style={{ color: "#E8C090" }}>
                             {a.title}
                           </p>
@@ -305,10 +317,19 @@ export default function Sidebar() {
                         {!a.is_read && (
                           <button
                             onClick={() => handleMarkRead(a.alert_id)}
-                            className="shrink-0 mt-0.5 p-0.5"
+                            className="shrink-0 mt-0.5 p-1 rounded transition-colors"
+                            style={{ color: "#D8A870", background: "rgba(0,204,68,0.08)" }}
                             title="Mark this alert as read"
+                            onMouseEnter={e => {
+                              (e.currentTarget as HTMLElement).style.color = "#00CC44";
+                              (e.currentTarget as HTMLElement).style.background = "rgba(0,204,68,0.18)";
+                            }}
+                            onMouseLeave={e => {
+                              (e.currentTarget as HTMLElement).style.color = "#D8A870";
+                              (e.currentTarget as HTMLElement).style.background = "rgba(0,204,68,0.08)";
+                            }}
                           >
-                            <X size={10} style={{ color: "#A87860" }} className="hover:text-[#FF8000] transition-colors" />
+                            <Check size={12} />
                           </button>
                         )}
                       </div>

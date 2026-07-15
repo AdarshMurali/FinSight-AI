@@ -1,8 +1,9 @@
 import logging
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from database import Base, engine, get_db
 from models import Alert, Portfolio, User
@@ -48,11 +49,18 @@ def _apply_scope(query, portfolio_id: Optional[int], current_user: User, db: Ses
 def get_alerts(
     portfolio_id: Optional[int] = Query(None),
     unread_only:  bool          = Query(False),
+    status:       str           = Query("active", description="active | resolved | all"),
     limit:        int           = Query(50),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    q = _apply_scope(db.query(Alert), portfolio_id, current_user, db).order_by(Alert.triggered_at.desc())
+    q = (
+        _apply_scope(db.query(Alert), portfolio_id, current_user, db)
+        .options(joinedload(Alert.portfolio))
+        .order_by(Alert.last_triggered_at.desc())
+    )
+    if status != "all":
+        q = q.filter(Alert.status == status)
     if unread_only:
         q = q.filter(Alert.is_read == 0)
     rows = q.limit(limit).all()
@@ -96,6 +104,7 @@ def mark_read(alert_id: int, current_user: User = Depends(get_current_user), db:
     if alert.portfolio_id is not None and not check_portfolio_access(db, current_user, alert.portfolio_id):
         raise HTTPException(status_code=403, detail="Not authorized for this alert")
     alert.is_read = 1
+    alert.read_at = datetime.utcnow()
     db.commit()
     invalidate(f"alerts:unread:user:{current_user.user_id}")
     if alert.portfolio_id is not None:
@@ -113,7 +122,7 @@ def mark_all_read(
         raise HTTPException(status_code=403, detail="Not authorized for this portfolio")
 
     q = _apply_scope(db.query(Alert).filter(Alert.is_read == 0), portfolio_id, current_user, db)
-    q.update({"is_read": 1}, synchronize_session=False)
+    q.update({"is_read": 1, "read_at": datetime.utcnow()}, synchronize_session=False)
     db.commit()
 
     invalidate(f"alerts:unread:user:{current_user.user_id}")
@@ -127,12 +136,18 @@ def mark_all_read(
 
 def _to_dict(a: Alert) -> dict:
     return {
-        "alert_id":     a.alert_id,
-        "portfolio_id": a.portfolio_id,
-        "alert_type":   a.alert_type,
-        "severity":     a.severity,
-        "title":        a.title,
-        "message":      a.message,
-        "is_read":      bool(a.is_read),
-        "triggered_at": a.triggered_at.isoformat() if a.triggered_at else None,
+        "alert_id":          a.alert_id,
+        "portfolio_id":      a.portfolio_id,
+        "portfolio_name":    a.portfolio.portfolio_name if a.portfolio else None,
+        "alert_type":        a.alert_type,
+        "severity":          a.severity,
+        "title":             a.title,
+        "message":           a.message,
+        "is_read":           bool(a.is_read),
+        "read_at":           a.read_at.isoformat() if a.read_at else None,
+        "triggered_at":      a.triggered_at.isoformat() if a.triggered_at else None,
+        "status":            a.status,
+        "occurrence_count":  a.occurrence_count,
+        "last_triggered_at": a.last_triggered_at.isoformat() if a.last_triggered_at else None,
+        "resolved_at":       a.resolved_at.isoformat() if a.resolved_at else None,
     }

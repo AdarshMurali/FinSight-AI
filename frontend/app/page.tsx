@@ -149,6 +149,7 @@ function AiAlertTicker({ alerts, onDismiss }: {
                   onClick={() => onDismiss(a.alert_id)}
                   className="text-[10px] tracking-wide text-[#f7f7f2] hover:text-[#FFA040] transition-colors whitespace-nowrap"
                 >
+                  {a.portfolio_name && <span className="text-[#FFA040]">[{a.portfolio_name}] </span>}
                   <span className="font-bold">{a.title}</span>
                   <span className="text-[#9a9a9a]"> — {a.message}</span>
                 </Link>
