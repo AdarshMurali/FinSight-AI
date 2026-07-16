@@ -1,0 +1,59 @@
+# Backend EC2 (13.206.225.80) service definitions -- backend + mcp + valkey.
+# ChromaDB is deliberately NOT included here: it's already Dockerized, already stable,
+# and reachable via CHROMA_HOST/CHROMA_PORT (SSM Parameter Store -> the box's own public
+# IP:8001) exactly the same from inside these containers as from the native processes
+# they replace -- no networking change needed, so it's left untouched in its own
+# compose project at /home/ec2-user/chromadb/docker-compose.yml.
+#
+# Usage (run from the FinSight-AI repo root on the EC2):
+#   docker compose -f aws/ec2-backend/docker-compose.yml build
+#   docker compose -f aws/ec2-backend/docker-compose.yml up -d <service>
+
+services:
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    image: finsight-backend:latest
+    container_name: finsight-backend
+    env_file:
+      - ../../backend/.env
+    environment:
+      USE_AWS_SECRETS: "true"
+      AWS_REGION: ap-south-1
+      REDIS_HOST: valkey
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - valkey
+    restart: unless-stopped
+
+  mcp:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    image: finsight-backend:latest
+    container_name: finsight-mcp
+    command: ["python", "mcp_server.py", "--transport", "sse", "--port", "8002"]
+    env_file:
+      - ../../backend/.env
+    environment:
+      USE_AWS_SECRETS: "true"
+      AWS_REGION: ap-south-1
+      REDIS_HOST: valkey
+    ports:
+      - "8002:8002"
+    depends_on:
+      - valkey
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: finsight-valkey
+    volumes:
+      - valkey_data:/data
+    restart: unless-stopped
+
+volumes:
+  valkey_data:
+    name: finsight_valkey_data

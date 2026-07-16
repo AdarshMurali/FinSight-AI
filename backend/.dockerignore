@@ -1,0 +1,22 @@
+# Native venvs (large, irrelevant to the image -- pip installs its own site-packages)
+backendvenv/
+mcpvenv/
+venv/
+.venv/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+
+# Secrets stay on the host, passed in via compose's env_file at container start,
+# never baked into an image layer.
+.env
+.env.*
+!.env.example
+
+logs/
+*.log
+
+# Flink-specific, not needed by backend/mcp images
+flink/**/*.jar

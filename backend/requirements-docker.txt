@@ -1,0 +1,62 @@
+# Docker image dependency set for the backend + mcp services (backend/Dockerfile).
+# Deliberately narrower than requirements.txt — matches the trimming already applied
+# manually when backendvenv/mcpvenv were set up on the EC2 (see aws_deployment.md):
+# apache-flink, confluent-kafka, celery, praw, sec-edgar-downloader, newsapi-python
+# are unused by the running FastAPI app / MCP server, only needed by the RAG loader
+# scripts under backend/rag/. Matters more here given the box's disk budget.
+
+# Core Framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+pydantic==2.9.2
+pydantic-settings==2.6.0
+
+# Database
+pyodbc==5.2.0
+sqlalchemy==2.0.36
+alembic==1.14.0
+
+# Data Processing
+pandas==2.2.3
+numpy==2.1.3
+scipy>=1.13.0
+
+# Utilities
+python-dotenv==1.0.1
+python-multipart==0.0.17
+
+# Auth
+pyjwt[crypto]>=2.10.1
+bcrypt==4.2.1
+
+# AWS Secrets Manager / SSM Parameter Store (Task 7.2)
+boto3>=1.34.0
+
+# MCP Server (Task 3.4b)
+mcp>=1.28.0
+
+# Report Generation (Task 5.4)
+reportlab>=4.2.0
+
+# RAG / Vector Store
+chromadb>=0.5.0
+openai>=1.40.0
+
+# LLM Providers
+anthropic>=0.40.0
+
+# Free Data Sources (used by market_events_job.py / market_events_backfill.py, ai_tools.py get_current_quote)
+yfinance>=0.2.40
+lxml>=5.0.0
+fredapi>=0.5.1
+finnhub-python>=2.4.19
+
+# NLP / Sentiment
+vaderSentiment>=3.3.2
+nltk>=3.8.1
+
+# WebSocket -> Kafka bridge (routers/ws.py connects to the Flink EC2's Kafka broker)
+kafka-python>=2.0.2
+
+# Redis/Valkey caching (Task 6.2)
+redis>=5.0.0
