@@ -11,7 +11,8 @@ function impactBadge(level: string | null) {
   return <span className={`badge ${cls}`}>{level.toUpperCase()}</span>;
 }
 
-const EVENT_TYPES = ["All", "policy", "geopolitical", "sectoral", "economic"];
+// Matches the Market_Events.event_type CHECK constraint exactly (database_migration.md).
+const EVENT_TYPES = ["All", "earnings", "sectoral", "economic", "policy", "geopolitical", "regulatory", "natural_disaster"];
 
 export default function MarketEventsPage() {
   const [events, setEvents]       = useState<MarketEvent[]>([]);
