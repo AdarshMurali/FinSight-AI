@@ -1034,7 +1034,7 @@ These were identified as gaps that add resume value or practical robustness. Rev
 
 | Item | Priority | Notes |
 |---|---|---|
-| **JWT Auth + Multi-Tenant Access** | ✅ Done (local) | See Task 6.4 — built and verified locally 2026-07-11. Not yet deployed to production (`api.fin-sightai.space` still runs the old unauthenticated build). |
+| **JWT Auth + Multi-Tenant Access** | ✅ Done | See Task 6.4 — built and verified locally, then deployed to production 2026-07-11 (`api.fin-sightai.space` enforces auth). |
 | **Langfuse (LLM tracing)** | High | Free tier. Tracks every GPT-4o call — tokens, latency, tool calls, cost. 20-minute add. Strong resume signal for LLM engineering maturity. |
 | **Rate limiting** (`slowapi`) | Medium | One-liner FastAPI middleware. Prevents API abuse on public demo. |
 | **Prometheus + Grafana** | Medium | Observability story for resume. Both free/open-source, can run on EC2. Shows production-readiness mindset. |
