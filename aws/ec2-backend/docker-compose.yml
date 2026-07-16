@@ -22,6 +22,14 @@ services:
       USE_AWS_SECRETS: "true"
       AWS_REGION: ap-south-1
       REDIS_HOST: valkey
+      # backend/.env has API_HOST=127.0.0.1 -- fine natively (nginx shares the
+      # same host loopback), but a container's loopback is its own network
+      # namespace, invisible to the host's published-port forwarding. Found
+      # via a 502 from nginx immediately after cutover (rolled back, fixed,
+      # retried) -- must override to 0.0.0.0 here without touching .env,
+      # since native systemd deploys still rely on the 127.0.0.1 behavior
+      # until this migration is fully complete.
+      API_HOST: "0.0.0.0"
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
