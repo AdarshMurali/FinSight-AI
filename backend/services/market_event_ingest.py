@@ -82,15 +82,26 @@ def classify_headline(headline: str, ticker: str, company_name: Optional[str] = 
 
 
 def load_security_tags(db: Session) -> dict:
-    """ticker_symbol -> {sector, country, name} for every tracked security,
-    plus the full distinct sector list (used to tag broad/macro events so
-    event_analyzer.py's plain list-membership exposure check — which does
-    NOT understand alert_engine.py's "All Sectors"/"Global" sentinel — still
-    matches every relevant holding instead of silently matching nothing)."""
-    rows = db.query(Security.ticker_symbol, Security.sector, Security.country, Security.security_name).all()
-    by_ticker = {r.ticker_symbol: {"sector": r.sector, "country": r.country, "name": r.security_name} for r in rows}
+    """ticker_symbol -> {sector, country, name, security_type} for every
+    tracked security, plus the full distinct sector list (used to tag
+    broad/macro events so event_analyzer.py's plain list-membership exposure
+    check — which does NOT understand alert_engine.py's "All Sectors"/
+    "Global" sentinel — still matches every relevant holding instead of
+    silently matching nothing). Also splits out `stock_tickers`: ETFs,
+    commodities, and currencies have no earnings/M&A/guidance to report on,
+    so earnings and news-keyword ingestion only need this subset — cuts
+    ~30 pointless API calls (and log noise) out of every run."""
+    rows = db.query(
+        Security.ticker_symbol, Security.sector, Security.country,
+        Security.security_name, Security.security_type,
+    ).all()
+    by_ticker = {
+        r.ticker_symbol: {"sector": r.sector, "country": r.country, "name": r.security_name}
+        for r in rows
+    }
     all_sectors = sorted({r.sector for r in rows if r.sector})
-    return {"by_ticker": by_ticker, "all_sectors": all_sectors}
+    stock_tickers = [r.ticker_symbol for r in rows if r.security_type == "stock"]
+    return {"by_ticker": by_ticker, "all_sectors": all_sectors, "stock_tickers": stock_tickers}
 
 
 def impact_from_surprise(surprise_pct: Optional[float]) -> str:
@@ -183,7 +194,8 @@ def ingest_earnings(db: Session, tags: dict, start: datetime, end: datetime, dry
 
     by_ticker = tags["by_ticker"]
     created = 0
-    for ticker, meta in by_ticker.items():
+    for ticker in tags["stock_tickers"]:
+        meta = by_ticker[ticker]
         try:
             df = yf.Ticker(ticker).get_earnings_dates(limit=16)
         except Exception as e:
@@ -340,9 +352,10 @@ def ingest_news_keywords(db: Session, tags: dict, start: datetime, end: datetime
 
     by_ticker = tags["by_ticker"]
     created = 0
-    for ticker, meta in by_ticker.items():
-        # Finnhub free tier is 60 calls/min; 135 tracked tickers with no
-        # throttling risks a 429 partway through and silently losing
+    for ticker in tags["stock_tickers"]:
+        meta = by_ticker[ticker]
+        # Finnhub free tier is 60 calls/min; iterating every tracked ticker with
+        # no throttling risks a 429 partway through and silently losing
         # coverage on whichever tickers come after it in iteration order.
         _time.sleep(1.1)
         try:
