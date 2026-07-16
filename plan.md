@@ -831,21 +831,30 @@ The history is being silently built up and not yet used. This task surfaces that
 ### **PHASE 6: Infrastructure & Deployment**
 **Duration**: 1-2 weeks
 
-#### Task 6.1: Dockerization
-**Goal**: Containerize all services
+#### Task 6.1: Dockerization — 🔄 In Progress (Phase 1 done 2026-07-16, Phase 2 next)
+**Goal**: Containerize the backend services — revised scope from the original plan below
+after actually mapping the deployment topology (Vercel + 2 separate EC2 instances):
 
-**Containers**:
-1. **Backend API** (FastAPI)
-2. **Frontend** (Next.js)
-3. **SQL Server** (or use managed service)
-4. **ChromaDB**
-5. **Redis**
-6. **Flink** (job manager + task manager)
+- **Frontend**: excluded entirely — Vercel already builds/deploys/CDNs it, containerizing
+  it ourselves would be pure overhead with no benefit since we don't self-host it anywhere.
+- **SQL Server**: excluded — Azure SQL is the managed service already in use, not something
+  we run ourselves.
+- **Split per-EC2, not one unified compose file** — Compose is single-host by design;
+  spanning two EC2s would need Swarm/K8s, disproportionate for a 2-box setup.
 
-**Deliverables**:
-- Dockerfiles for each service
-- Docker Compose for local development
-- Multi-stage builds for optimization
+**Phase 1 — backend EC2 (`13.206.225.80`) — ✅ Done 2026-07-16**: `backend`, `mcp`, `valkey`
+containerized (`backend/Dockerfile`, `aws/ec2-backend/docker-compose.yml`). ChromaDB was
+already Dockerized and left untouched. Five real bugs found and fixed during rollout
+(buildx version mismatch, a pydantic pin conflict, a missing ODBC runtime dependency, a
+`127.0.0.1`-bind issue that 502'd the public site for about a minute, and a proxy-headers
+trust issue that broke HTTPS redirects after full cutover) — full writeup in `status.md`.
+
+**Phase 2 — Flink EC2 (`13.233.21.229`) — not started**: Kafka/Zookeeper/Flink/Kafka-UI are
+already Dockerized (`aws/ec2-flink/docker-compose.yml`). Remaining: the two Finnhub producer
+scripts (`finnhub_trade_producer.py`, `finnhub_news_producer.py`) still run as bare `nohup`
+processes with no restart policy — containerizing them as two more services in that same
+compose file gets `restart: unless-stopped` for free, which would have auto-recovered from
+the 2026-07-14/16 silent trade-producer crash without manual intervention.
 
 ---
 
@@ -1234,7 +1243,7 @@ Called from the top of `config.py`, before `Settings()` is instantiated — pyda
 
 **Created**: 2026-06-14
 **Last Updated**: 2026-07-12
-**Status**: All of Phase 5 (5.1, 5.2 incl. event + AI alerts, 5.3, 5.4 PDF reports) complete. 3.4b (FastMCP), 6.2 (Redis/Valkey caching), 6.4 (JWT + multi-tenant access), 7.2 (AWS Secrets Manager + SSM Parameter Store) also complete and live in production. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend live at `https://www.fin-sightai.space`. MCP server relocated from the Flink EC2 to the ChromaDB EC2 2026-07-11 (that box resized t3.micro → t3.small to fit it, now also running Redis/Valkey). Overview tab volatility display bug fixed 2026-07-11. Stress testing overhauled 2026-07-12: swapped Dot-com Bust for 2023 Regional Banking Crisis + 2026 Iran War, added 4 parametric shock scenarios (Rates ±100bps, Equities -20%, No Stress) as a separate sensitivity-based methodology — see status.md for full writeup. Pending: real CI/CD, Dockerization, Excel report format (deferred), orphaned analyze-event AI endpoint (found 2026-07-12).
+**Status**: All of Phase 5 (5.1, 5.2 incl. event + AI alerts, 5.3, 5.4 PDF reports) complete. 3.4b (FastMCP), 6.2 (Redis/Valkey caching), 6.4 (JWT + multi-tenant access), 7.2 (AWS Secrets Manager + SSM Parameter Store) also complete and live in production. AWS ChromaDB 36K+ docs. Docker Desktop retired. Both daily EC2 batch jobs (`risk_job.py`, `price_update_job.py`) live and verified on AWS (2026-07-08). FastAPI backend pushed to the cloud 2026-07-09 (Task 6.3 partial — see `CLOUD_MIGRATION.md`): reused ChromaDB EC2, `fin-sightai.space` domain, nginx+HTTPS, Vercel frontend live at `https://www.fin-sightai.space`. MCP server relocated from the Flink EC2 to the ChromaDB EC2 2026-07-11 (that box resized t3.micro → t3.small to fit it, now also running Redis/Valkey). Overview tab volatility display bug fixed 2026-07-11. Stress testing overhauled 2026-07-12: swapped Dot-com Bust for 2023 Regional Banking Crisis + 2026 Iran War, added 4 parametric shock scenarios (Rates ±100bps, Equities -20%, No Stress) as a separate sensitivity-based methodology — see status.md for full writeup. Dockerization Phase 1 (backend EC2) done 2026-07-16; Phase 2 (Flink EC2) next. Orphaned analyze-event AI endpoint (found 2026-07-12) got a UI 2026-07-15/16. Pending: real CI/CD, Excel report format (deferred).
 
 ---
 
