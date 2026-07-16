@@ -58,13 +58,10 @@ services:
   valkey:
     image: valkey/valkey:8-alpine
     container_name: finsight-valkey
-    # Published to the host (not just the compose network) because backend/mcp
-    # are still native systemd processes mid-migration (2026-07-16 ODBC driver
-    # issue in the backend image, rolled back pending a fix) -- they only know
-    # REDIS_HOST=localhost. Remove this once backend/mcp are containerized too
-    # and can reach valkey by service name on the compose network instead.
-    ports:
-      - "127.0.0.1:6379:6379"
+    # No published port -- backend/mcp reach it by service name (REDIS_HOST=valkey
+    # above) on the compose network now that both are containerized too
+    # (2026-07-16). Was briefly published to 127.0.0.1:6379 mid-migration while
+    # backend/mcp were still native systemd processes and only knew localhost.
     volumes:
       - valkey_data:/data
     restart: unless-stopped
