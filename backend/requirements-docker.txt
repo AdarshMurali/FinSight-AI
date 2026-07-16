@@ -8,7 +8,11 @@
 # Core Framework
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
-pydantic==2.9.2
+# mcp>=1.28.0 is unpinned and has tightened its own pydantic floor over time --
+# a fresh install today needs >=2.11.0 even though the native backendvenv (installed
+# weeks ago, before mcp's requirement tightened) still has 2.9.2. FastAPI 0.115
+# supports pydantic v2 broadly, no known conflict with the newer floor.
+pydantic>=2.11.0,<3.0.0
 pydantic-settings==2.6.0
 
 # Database
