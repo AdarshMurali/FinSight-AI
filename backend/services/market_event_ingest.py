@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -150,6 +150,39 @@ def event_exists(db: Session, event_type: str, title: str, event_date: datetime)
         MarketEvent.event_title == title,
         MarketEvent.event_date >= day_start,
         MarketEvent.event_date <= day_end,
+    ).first() is not None
+
+
+def event_exists_by_source_url(db: Session, event_type: str, source_url: Optional[str]) -> bool:
+    """Catches the SAME article surfacing under multiple tickers' Finnhub
+    company-news feeds (e.g. a PayPal/Stripe article naming Visa, Mastercard,
+    and American Express all in the headline creates one event per matched
+    ticker unless caught here). Finnhub's article URL is stable regardless of
+    which ticker's feed returned it, so this is a precise dedup key —
+    unlike matching on headline text, it needs no escaping and can't
+    false-positive on two unrelated articles that happen to share wording."""
+    if not source_url:
+        return False
+    return db.query(MarketEvent.event_id).filter(
+        MarketEvent.event_type == event_type,
+        MarketEvent.source_url == source_url,
+    ).first() is not None
+
+
+def recent_ticker_event_exists(db: Session, ticker: str, event_type: str, event_date: datetime, window_days: int = 5) -> bool:
+    """Catches ongoing sagas re-reported by different outlets (different
+    headline text, different source_url each time — e.g. an M&A negotiation
+    covered by Bloomberg, then Reuters, then FT over a few days). At most one
+    event of a given type per ticker per rolling window; a genuinely new,
+    unrelated story about the same company weeks later still gets through
+    once the window has passed."""
+    window_start = event_date - timedelta(days=window_days)
+    window_end = event_date + timedelta(days=window_days)
+    return db.query(MarketEvent.event_id).filter(
+        MarketEvent.event_type == event_type,
+        MarketEvent.event_title.like(f"{ticker}: %"),
+        MarketEvent.event_date >= window_start,
+        MarketEvent.event_date <= window_end,
     ).first() is not None
 
 
@@ -381,8 +414,13 @@ def ingest_news_keywords(db: Session, tags: dict, start: datetime, end: datetime
                 continue
 
             title = f"{ticker}: {headline}"[:300]
+            source_url = article.get("url")
             if event_exists(db, classified["event_type"], title, event_date):
                 continue
+            if event_exists_by_source_url(db, classified["event_type"], source_url):
+                continue  # same article already filed under a different ticker's feed
+            if recent_ticker_event_exists(db, ticker, classified["event_type"], event_date):
+                continue  # same ongoing story, different outlet — already have one for this ticker
 
             sector, country = meta.get("sector"), meta.get("country")
             ev = build_event(
@@ -390,7 +428,7 @@ def ingest_news_keywords(db: Session, tags: dict, start: datetime, end: datetime
                 description=article.get("summary") or headline,
                 sectors=[sector] if sector else [], regions=[country] if country else [],
                 impact_level="medium", sentiment=classified["sentiment"],
-                source_url=article.get("url"),
+                source_url=source_url,
             )
             _save(db, ev, dry_run)
             created += 1
