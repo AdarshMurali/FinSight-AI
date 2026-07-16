@@ -1,8 +1,8 @@
 """
-ONE-TIME cleanup for duplicate Market_Events rows created before the two
-dedup fixes in market_event_ingest.py (2026-07-16):
+ONE-TIME cleanup for bad Market_Events rows created before three fixes in
+market_event_ingest.py (2026-07-16):
 
-  1. Same article synidcated across multiple tickers' Finnhub company-news
+  1. Same article syndicated across multiple tickers' Finnhub company-news
      feeds (e.g. a PayPal/Stripe article naming Visa, Mastercard, and
      American Express created 3 near-identical rows). Cleaned up by
      (event_type, source_url) — keeps the earliest event_id per group.
@@ -11,6 +11,12 @@ dedup fixes in market_event_ingest.py (2026-07-16):
      (e.g. Uber/Delivery Hero acquisition talks covered ~6 times).
      Cleaned up per (ticker, event_type="sectoral") with a 5-day rolling
      window — keeps the first event in each window, drops the rest.
+
+  3. Insider-transaction-disclosure headlines misclassified as M&A (e.g.
+     "Patrick W Maloney's Recent Buy: Acquires $145K In CME Group Stock" —
+     an insider "acquiring" shares matched the M&A keyword regex). Purged
+     outright using the same _ROUNDUP_PATTERNS exclusion list the ingestion
+     code now checks before classifying.
 
 NOT wired into any schedule — run by hand, once, after deploying the
 ingestion fixes:
@@ -37,6 +43,7 @@ try:
     from database import SessionLocal, engine
     from models import MarketEvent
     from sqlalchemy import func
+    from services.market_event_ingest import _ROUNDUP_PATTERNS
 except Exception:
     logger.exception("MarketEventsDedupCleanup RUN FAILED during import")
     logger.info(f"===== MarketEventsDedupCleanup RUN ENDED (FAILED) — {time.time() - _START_TIME:.1f}s =====")
@@ -62,6 +69,23 @@ def wait_for_db():
             else:
                 logger.error("[Cleanup] DB unreachable. Aborting.")
                 raise
+
+
+def cleanup_misclassified_events(db, dry_run: bool) -> int:
+    rows = db.query(MarketEvent).filter(MarketEvent.event_type == "sectoral").all()
+    deleted = 0
+    for r in rows:
+        # Title is "TICKER: headline" — strip the prefix before matching,
+        # same as what the ticker/headline check sees at ingest time.
+        headline = re.sub(r"^[A-Za-z.\-=]+:\s", "", r.event_title or "").lower()
+        if any(re.search(p, headline) for p in _ROUNDUP_PATTERNS):
+            logger.info(f"[Cleanup/Misclassified] {'[dry-run] ' if dry_run else ''}delete #{r.event_id}: {r.event_title[:80]}")
+            if not dry_run:
+                db.delete(r)
+            deleted += 1
+    if not dry_run and deleted:
+        db.commit()
+    return deleted
 
 
 def cleanup_source_url_duplicates(db, dry_run: bool) -> int:
@@ -126,11 +150,15 @@ def run(dry_run: bool):
     wait_for_db()
     db = SessionLocal()
     try:
+        # Order matters: purge misclassified rows first so window-dedup's
+        # "first in window wins" doesn't keep a misclassified row over a
+        # legitimate one that happened to arrive later.
+        n_misclassified = cleanup_misclassified_events(db, dry_run)
         n_url = cleanup_source_url_duplicates(db, dry_run)
         n_window = cleanup_ticker_window_duplicates(db, dry_run)
         logger.info(
             f"[Cleanup] Complete{' (DRY RUN — nothing deleted)' if dry_run else ''} — "
-            f"{n_url} source-url duplicates, {n_window} same-saga duplicates"
+            f"{n_misclassified} misclassified, {n_url} source-url duplicates, {n_window} same-saga duplicates"
         )
     finally:
         db.close()

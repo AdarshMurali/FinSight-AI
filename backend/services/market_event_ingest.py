@@ -48,10 +48,18 @@ _KEYWORD_RULES = [
 # under OXY's feed). These recurring templates are excluded outright — a
 # roundup headline matching an M&A/downgrade keyword is a false positive
 # almost by construction, not a real signal about the requested company.
+#
+# Also excludes insider-transaction-disclosure templates (e.g. "Patrick W
+# Maloney's Recent Buy: Acquires $145K In CME Group Stock") — an insider
+# "acquiring" shares of stock matches the M&A regex's "acqui(re|res)" but
+# has nothing to do with a corporate acquisition.
 _ROUNDUP_PATTERNS = [
     r"wall street'?s top analyst calls",
     r"\btop \d+ (upgrades?|downgrades?)\b",
     r"\banalyst calls\b",
+    r"recent buy",
+    r"takes? an? (bullish|bearish) stance",
+    r"acquires?\s+\$[\d,.]+[kmb]?\s+in\b",
 ]
 
 
