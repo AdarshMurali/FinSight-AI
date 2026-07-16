@@ -129,4 +129,16 @@ if __name__ == "__main__":
         host=settings.API_HOST,
         port=settings.API_PORT,
         reload=settings.API_RELOAD,
+        # nginx forwards X-Forwarded-Proto correctly, but uvicorn's default
+        # forwarded_allow_ips="127.0.0.1" only trusts it from a genuine loopback
+        # peer. Behind Docker's NAT, nginx's connection to this container arrives
+        # as the Docker bridge gateway IP instead (e.g. 172.19.0.1), not literal
+        # 127.0.0.1, so the header was silently ignored -- redirects (e.g. the
+        # trailing-slash normalization on /api/portfolios) came back as
+        # "http://" even on the HTTPS site, which browsers block as mixed
+        # content. Safe to trust unconditionally here since this port is only
+        # ever reachable via nginx on the same host (bound to 127.0.0.1 only,
+        # not published externally).
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )
