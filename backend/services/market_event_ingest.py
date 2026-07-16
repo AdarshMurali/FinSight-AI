@@ -38,13 +38,39 @@ _KEYWORD_RULES = [
     (r"\b(raises? guidance|boosts? (guidance|forecast)|upgrade[sd]?)\b", "sectoral", "positive"),
 ]
 
+# Finnhub's company-news feed for ticker X includes syndicated multi-stock
+# roundup columns just because X gets a passing mention (e.g. "Intel
+# downgraded, Marvell upgraded: Wall Street's top analyst calls" showing up
+# under OXY's feed). These recurring templates are excluded outright — a
+# roundup headline matching an M&A/downgrade keyword is a false positive
+# almost by construction, not a real signal about the requested company.
+_ROUNDUP_PATTERNS = [
+    r"wall street'?s top analyst calls",
+    r"\btop \d+ (upgrades?|downgrades?)\b",
+    r"\banalyst calls\b",
+]
 
-def classify_headline(headline: str) -> Optional[dict]:
+
+def classify_headline(headline: str, ticker: str, company_name: Optional[str] = None) -> Optional[dict]:
     """Keyword-match a news headline into an event_type/sentiment pair, or None
     if it doesn't look like one of the categories we're tracking (M&A,
-    guidance cuts, downgrades/upgrades). Heuristic, not NLP — precision over
-    recall by design."""
+    guidance cuts, downgrades/upgrades) — or if it doesn't actually appear to
+    be about `ticker` (Finnhub's per-ticker news feed includes syndicated
+    multi-stock roundups that just mention the ticker in passing). Heuristic,
+    not NLP — precision over recall by design."""
     text = headline.lower()
+
+    if any(re.search(p, text) for p in _ROUNDUP_PATTERNS):
+        return None
+
+    # Require the ticker symbol or the company's distinctive name token to
+    # actually appear in the headline, so a roundup mentioning three other
+    # companies doesn't get attributed to this one.
+    name_token = company_name.split()[0].lower() if company_name else None
+    ticker_pattern = rf"\b{re.escape(ticker.lower())}\b"
+    if not re.search(ticker_pattern, text) and not (name_token and name_token in text):
+        return None
+
     for pattern, event_type, sentiment in _KEYWORD_RULES:
         if re.search(pattern, text):
             return {"event_type": event_type, "sentiment": sentiment}
@@ -52,13 +78,13 @@ def classify_headline(headline: str) -> Optional[dict]:
 
 
 def load_security_tags(db: Session) -> dict:
-    """ticker_symbol -> {sector, country} for every tracked security, plus
-    the full distinct sector list (used to tag broad/macro events so
+    """ticker_symbol -> {sector, country, name} for every tracked security,
+    plus the full distinct sector list (used to tag broad/macro events so
     event_analyzer.py's plain list-membership exposure check — which does
     NOT understand alert_engine.py's "All Sectors"/"Global" sentinel — still
     matches every relevant holding instead of silently matching nothing)."""
-    rows = db.query(Security.ticker_symbol, Security.sector, Security.country).all()
-    by_ticker = {r.ticker_symbol: {"sector": r.sector, "country": r.country} for r in rows}
+    rows = db.query(Security.ticker_symbol, Security.sector, Security.country, Security.security_name).all()
+    by_ticker = {r.ticker_symbol: {"sector": r.sector, "country": r.country, "name": r.security_name} for r in rows}
     all_sectors = sorted({r.sector for r in rows if r.sector})
     return {"by_ticker": by_ticker, "all_sectors": all_sectors}
 
@@ -300,6 +326,7 @@ def ingest_fomc(db: Session, tags: dict, start: datetime, end: datetime, dry_run
 # for the weekly job's window, makes the one-time backfill thin by nature.
 
 def ingest_news_keywords(db: Session, tags: dict, start: datetime, end: datetime, dry_run: bool) -> int:
+    import time as _time
     import requests
 
     finnhub_key = os.environ.get("FINNHUB_API_KEY")
@@ -310,6 +337,10 @@ def ingest_news_keywords(db: Session, tags: dict, start: datetime, end: datetime
     by_ticker = tags["by_ticker"]
     created = 0
     for ticker, meta in by_ticker.items():
+        # Finnhub free tier is 60 calls/min; 135 tracked tickers with no
+        # throttling risks a 429 partway through and silently losing
+        # coverage on whichever tickers come after it in iteration order.
+        _time.sleep(1.1)
         try:
             r = requests.get(
                 "https://finnhub.io/api/v1/company-news",
@@ -324,7 +355,7 @@ def ingest_news_keywords(db: Session, tags: dict, start: datetime, end: datetime
 
         for article in articles:
             headline = article.get("headline", "")
-            classified = classify_headline(headline)
+            classified = classify_headline(headline, ticker, meta.get("name"))
             if not classified:
                 continue
 
