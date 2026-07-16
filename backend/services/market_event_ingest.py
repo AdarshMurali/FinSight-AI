@@ -84,6 +84,20 @@ def sentiment_from_surprise(surprise_pct: Optional[float]) -> str:
     return "neutral"
 
 
+def reported_quarter_label(report_date: datetime) -> str:
+    """Companies report earnings ~1-6 weeks after the quarter they're reporting
+    ON closes — e.g. JPM reporting in mid-July is reporting Q2 (Apr-Jun)
+    results, not Q3 (the calendar quarter the report date itself falls in).
+    Approximate the reported quarter by shifting back one month before taking
+    the calendar quarter, which is right for the vast majority of reporters."""
+    month = report_date.month - 1
+    year = report_date.year
+    if month == 0:
+        month, year = 12, year - 1
+    quarter = (month - 1) // 3 + 1
+    return f"Q{quarter} {year}"
+
+
 def event_exists(db: Session, event_type: str, title: str, event_date: datetime) -> bool:
     """Dedup key: same type + title + calendar day. Makes reruns of either
     script safe (backfill re-run, or the weekly job's window overlapping a
@@ -161,7 +175,7 @@ def ingest_earnings(db: Session, tags: dict, start: datetime, end: datetime, dry
             if pd.isna(eps_actual):
                 continue  # future/unreported quarter within range — nothing to report yet
 
-            title = f"{ticker} Earnings — Q{event_date.month // 3 + 1} {event_date.year}"
+            title = f"{ticker} Earnings — {reported_quarter_label(event_date)}"
             if event_exists(db, "earnings", title, event_date):
                 continue
 
