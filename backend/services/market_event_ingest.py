@@ -31,11 +31,15 @@ ALLOWED_SENTIMENTS = {"positive", "negative", "neutral"}
 # Headline keyword -> (event_type, sentiment). Checked in order; first match wins.
 # Deliberately conservative — false negatives (missing an event) are fine for
 # this feature, false positives (tagging unrelated news) are worse.
+#
+# Scoped to M&A + guidance cuts ONLY (2026-07-16) — routine single-analyst
+# upgrade/downgrade and price-target tweaks were dropped after the backfill
+# dry-run showed ~3 events/ticker over 6.5 months, almost entirely analyst
+# rating churn rather than material company news. Market_Events is meant to
+# stay curated, not become a firehose of weekly analyst noise.
 _KEYWORD_RULES = [
     (r"\b(acqui(re|res|sition)|merger|to be bought by|buyout|takeover)\b", "sectoral", "neutral"),
-    (r"\b(downgrade[sd]?|cuts? (price target|rating)|lowers? (rating|outlook))\b", "sectoral", "negative"),
     (r"\b(cuts? (guidance|forecast)|lowers? guidance|slashes? outlook|guidance cut)\b", "sectoral", "negative"),
-    (r"\b(raises? guidance|boosts? (guidance|forecast)|upgrade[sd]?)\b", "sectoral", "positive"),
 ]
 
 # Finnhub's company-news feed for ticker X includes syndicated multi-stock
