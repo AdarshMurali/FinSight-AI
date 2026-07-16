@@ -123,6 +123,46 @@ services:
       - finsight-streaming
     restart: unless-stopped
 
+  # ── Finnhub producers (2026-07-16) ─────────────────────────────────────────
+  # Previously bare `nohup` host processes with no restart policy -- the trade
+  # producer crashed silently for ~18hrs on 2026-07-14 because nothing would
+  # bring it back. restart: unless-stopped fixes that, and a named container
+  # also can't accumulate the duplicate-process bug the old nohup+PID-file
+  # launch had (found live on this box while planning this change).
+  trade-producer:
+    build:
+      context: /home/ec2-user/FinSight-AI/backend/flink
+      dockerfile: Dockerfile.producer
+    image: finsight-producer:latest
+    container_name: finsight-trade-producer
+    command: ["python", "-u", "finnhub_trade_producer.py"]
+    environment:
+      KAFKA_MODE: docker
+    env_file:
+      - .env
+    depends_on:
+      - kafka
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
+  news-producer:
+    build:
+      context: /home/ec2-user/FinSight-AI/backend/flink
+      dockerfile: Dockerfile.producer
+    image: finsight-producer:latest
+    container_name: finsight-news-producer
+    command: ["python", "-u", "finnhub_news_producer.py"]
+    environment:
+      KAFKA_MODE: docker
+    env_file:
+      - .env
+    depends_on:
+      - kafka
+    networks:
+      - finsight-streaming
+    restart: unless-stopped
+
 volumes:
   zookeeper_data:
   zookeeper_logs:

@@ -9,6 +9,15 @@ load_dotenv()
 KAFKA_BOOTSTRAP_SERVERS_EXTERNAL = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 KAFKA_BOOTSTRAP_SERVERS_INTERNAL = "kafka:29092"       # used by Flink jobs in Docker
 
+# KAFKA_MODE=docker is set in aws/ec2-flink/docker-compose.yml for the
+# trade-producer/news-producer services (2026-07-16) so they use the internal
+# listener like the Flink jobs already do, instead of the external IP:9092
+# route they need when running as bare host processes.
+KAFKA_BOOTSTRAP_SERVERS = (
+    KAFKA_BOOTSTRAP_SERVERS_INTERNAL if os.getenv("KAFKA_MODE") == "docker"
+    else KAFKA_BOOTSTRAP_SERVERS_EXTERNAL
+)
+
 TOPIC_MARKET_NEWS   = "market.news"
 TOPIC_MARKET_TRADES = "market.trades"
 

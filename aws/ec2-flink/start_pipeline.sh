@@ -6,7 +6,6 @@
 set -e
 
 REPO=/home/ec2-user/FinSight-AI
-VENV=$REPO/flinkvenv
 COMPOSE_FILE=$REPO/aws/ec2-flink/docker-compose.yml
 LOG=/home/ec2-user/logs/finsight-pipeline.log
 
@@ -67,18 +66,14 @@ curl -s http://localhost:8082/jobs/overview | \
     log "  Job [$NAME] state: $STATE"
   done
 
-# ── Step 7: Start trade + news producers ─────────────────────
-log "Starting Finnhub producers..."
-set -a; source $REPO/aws/ec2-flink/.env; set +a
-source $VENV/bin/activate
-cd $REPO/backend/flink
-
-PYTHONUNBUFFERED=1 nohup python -u finnhub_trade_producer.py >> /home/ec2-user/logs/finsight-trade-producer.log 2>&1 &
-echo $! > /tmp/trade_producer.pid
-log "Trade producer started (PID $(cat /tmp/trade_producer.pid))"
-
-PYTHONUNBUFFERED=1 nohup python -u finnhub_news_producer.py >> /home/ec2-user/logs/finsight-news-producer.log 2>&1 &
-echo $! > /tmp/news_producer.pid
-log "News producer started (PID $(cat /tmp/news_producer.pid))"
+# ── Step 7: Confirm Finnhub producers ────────────────────────
+# Containerized (2026-07-16, restart: unless-stopped) -- already started by
+# Step 1's `docker compose up -d` along with the rest of the stack. No more
+# nohup/PID-file launch here: that's exactly what let the trade producer sit
+# dead for ~18hrs on 2026-07-14 (nothing would restart it) and let duplicate
+# processes accumulate (no PID cleanup before relaunch). A named container
+# can't do either -- `up -d` on an existing one just leaves it running.
+log "Confirming Finnhub producer containers..."
+docker compose -f "$COMPOSE_FILE" ps trade-producer news-producer
 
 log "=== Pipeline started successfully ==="

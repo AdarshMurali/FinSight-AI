@@ -1,0 +1,23 @@
+# Shared image for the trade-producer and news-producer services
+# (aws/ec2-flink/docker-compose.yml) -- same small dependency set for both,
+# only the entrypoint command differs. Kept separate from the main Flink
+# Dockerfile (which builds jobmanager/taskmanager) since PyFlink/chromadb/
+# openai are unnecessary weight for what these two scripts actually need.
+#
+# Build context is backend/flink/ (not a producer/ subdirectory) because
+# both producer scripts import the SAME config.py the Flink jobs use --
+# duplicating it would let the two copies drift.
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY config.py finnhub_trade_producer.py finnhub_news_producer.py ./
+RUN pip install --no-cache-dir \
+    kafka-python==2.0.2 \
+    websocket-client>=1.8.0 \
+    requests==2.32.3 \
+    python-dotenv==1.0.1
+
+# No CMD -- docker-compose.yml sets `command:` per service (trade vs news).

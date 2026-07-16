@@ -27,7 +27,7 @@ from kafka.errors import NoBrokersAvailable
 sys.path.insert(0, os.path.dirname(__file__))
 from config import (
     FINNHUB_API_KEY, FINNHUB_REST_BASE,
-    KAFKA_BOOTSTRAP_SERVERS_EXTERNAL, TOPIC_MARKET_NEWS,
+    KAFKA_BOOTSTRAP_SERVERS, TOPIC_MARKET_NEWS,
     TICKERS, NEWS_POLL_INTERVAL_SECONDS, NEWS_LOOKBACK_HOURS,
 )
 
@@ -36,13 +36,13 @@ def make_producer() -> KafkaProducer:
     for attempt in range(10):
         try:
             producer = KafkaProducer(
-                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS_EXTERNAL,
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 value_serializer=lambda v: json.dumps(v).encode("utf-8"),
                 key_serializer=lambda k: k.encode("utf-8") if k else None,
                 acks="all",
                 retries=3,
             )
-            print(f"[+] Connected to Kafka at {KAFKA_BOOTSTRAP_SERVERS_EXTERNAL}")
+            print(f"[+] Connected to Kafka at {KAFKA_BOOTSTRAP_SERVERS}")
             return producer
         except NoBrokersAvailable:
             print(f"  Kafka not ready, retrying ({attempt + 1}/10)...")
