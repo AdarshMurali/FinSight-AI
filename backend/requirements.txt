@@ -45,6 +45,7 @@ anthropic>=0.40.0
 
 # Free Data Sources
 yfinance>=0.2.40
+lxml>=5.0.0  # yfinance.get_earnings_dates() scrapes an HTML table via pandas.read_html
 fredapi>=0.5.1
 finnhub-python>=2.4.19
 praw>=7.7.1

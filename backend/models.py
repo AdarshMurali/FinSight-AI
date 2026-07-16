@@ -132,6 +132,7 @@ class MarketEvent(Base):
     affected_regions = Column(Text)
     impact_level = Column(String(50))
     source_url = Column(String(500))
+    sentiment = Column(String(20))
 
 
 class PositionChangeLog(Base):
