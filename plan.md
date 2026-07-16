@@ -831,7 +831,7 @@ The history is being silently built up and not yet used. This task surfaces that
 ### **PHASE 6: Infrastructure & Deployment**
 **Duration**: 1-2 weeks
 
-#### Task 6.1: Dockerization — 🔄 In Progress (Phase 1 done 2026-07-16, Phase 2 next)
+#### Task 6.1: Dockerization — ✅ Done (both phases complete 2026-07-16)
 **Goal**: Containerize the backend services — revised scope from the original plan below
 after actually mapping the deployment topology (Vercel + 2 separate EC2 instances):
 
@@ -849,12 +849,13 @@ already Dockerized and left untouched. Five real bugs found and fixed during rol
 `127.0.0.1`-bind issue that 502'd the public site for about a minute, and a proxy-headers
 trust issue that broke HTTPS redirects after full cutover) — full writeup in `status.md`.
 
-**Phase 2 — Flink EC2 (`13.233.21.229`) — not started**: Kafka/Zookeeper/Flink/Kafka-UI are
-already Dockerized (`aws/ec2-flink/docker-compose.yml`). Remaining: the two Finnhub producer
-scripts (`finnhub_trade_producer.py`, `finnhub_news_producer.py`) still run as bare `nohup`
-processes with no restart policy — containerizing them as two more services in that same
-compose file gets `restart: unless-stopped` for free, which would have auto-recovered from
-the 2026-07-14/16 silent trade-producer crash without manual intervention.
+**Phase 2 — Flink EC2 (`13.233.21.229`) — ✅ Done 2026-07-16**: Kafka/Zookeeper/Flink/Kafka-UI
+were already Dockerized. Added the two Finnhub producers (`trade-producer`, `news-producer`)
+as two more services in the same `aws/ec2-flink/docker-compose.yml`, `restart: unless-stopped`
+— fixes the exact gap that let the trade producer sit dead for ~18hrs on 2026-07-14. Also
+converted this box to git (sparse-checkout, matching the backend EC2) as part of the same
+work rather than deferring further — no more tar/scp deploys here either. Full writeup in
+`status.md`, including two live-vs-git drift bugs found and fixed during the git conversion.
 
 ---
 
