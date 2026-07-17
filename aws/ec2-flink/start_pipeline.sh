@@ -46,15 +46,45 @@ for i in $(seq 1 30); do
   sleep 5
 done
 
-# ── Step 5: Submit volatility detector job ───────────────────
-log "Submitting volatility detector Flink job..."
-docker exec finsight-flink-jobmanager \
-  flink run --detached -py /opt/flink/jobs/volatility_detector_job.py
+# ── Step 5+6: Submit jobs, skipping any already RUNNING ──────
+# Not idempotent before 2026-07-17: every invocation called `flink run`
+# unconditionally, so a manual retry, a re-approved CD deploy, or cron
+# overlapping either of those created a second concurrent instance of the
+# same job. With only 4 task slots total, two "FinSight Volatility Detector"
+# + two "FinSight News Sentiment Stream" instances fighting over them left
+# every one of the four in a terminal FAILED state within ~20 minutes
+# (NoResourceAvailableException, no restart strategy configured) -- found
+# live via a production-flink CD approval test. Checking jobs/overview for
+# a RUNNING job with the target name first makes every submission path safe
+# to repeat.
+job_is_running() {
+  # Flatten out the nested "tasks":{...} object first -- grep -oE '\{[^{}]*\}'
+  # can't see past nested braces, so without this it would silently match
+  # each job's inner tasks object instead of the job object itself and never
+  # find "name" at all (verified against a captured jobs/overview payload
+  # before trusting this).
+  curl -s http://localhost:8082/jobs/overview \
+    | sed 's/,"tasks":{[^}]*}//g' \
+    | grep -oE '\{[^{}]*\}' \
+    | grep -F "\"name\":\"$1\"" \
+    | grep -q '"state":"RUNNING"'
+}
 
-# ── Step 6: Submit news sentiment job ────────────────────────
-log "Submitting news sentiment Flink job..."
-docker exec finsight-flink-jobmanager \
-  flink run --detached -py /opt/flink/jobs/news_sentiment_job.py
+if job_is_running "FinSight Volatility Detector"; then
+  log "Volatility detector job already RUNNING, skipping submission."
+else
+  log "Submitting volatility detector Flink job..."
+  docker exec finsight-flink-jobmanager \
+    flink run --detached -py /opt/flink/jobs/volatility_detector_job.py
+fi
+
+if job_is_running "FinSight News Sentiment Stream"; then
+  log "News sentiment job already RUNNING, skipping submission."
+else
+  log "Submitting news sentiment Flink job..."
+  docker exec finsight-flink-jobmanager \
+    flink run --detached -py /opt/flink/jobs/news_sentiment_job.py
+fi
 
 log "Flink jobs submitted. Verifying state..."
 sleep 10
