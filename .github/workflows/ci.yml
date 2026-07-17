@@ -13,10 +13,16 @@ on:
 
 jobs:
   # ── Detect which images actually need rebuilding ────────────────────────────
-  # backend/** (excluding flink/ and backfill_scripts/) -> finsight-backend
-  # backend/flink/**                                    -> finsight-flink + finsight-producer
-  # backend/backfill_scripts/** is deliberately excluded from CI entirely --
-  # one-time scripts, never containerized, never auto-deployed.
+  # Positive patterns only, deliberately -- an earlier version of this filter
+  # used 'backend/**' + '!backend/flink/**' negations, and dorny/paths-filter's
+  # default "some" quantifier does NOT combine positive+negative patterns the
+  # way you'd expect (a change to .github/workflows/ci.yml itself incorrectly
+  # matched "backend" in testing here, confirmed via the action's own diff log
+  # before this fix). Enumerating backend/'s actual subdirectories explicitly
+  # avoids the ambiguity entirely.
+  #
+  # backend/backfill_scripts/** is deliberately NOT listed -- excluded from CI
+  # entirely, one-time scripts, never containerized, never auto-deployed.
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -29,9 +35,15 @@ jobs:
         with:
           filters: |
             backend:
-              - 'backend/**'
-              - '!backend/flink/**'
-              - '!backend/backfill_scripts/**'
+              - 'backend/*.py'
+              - 'backend/*.txt'
+              - 'backend/Dockerfile'
+              - 'backend/.dockerignore'
+              - 'backend/routers/**'
+              - 'backend/services/**'
+              - 'backend/rag/**'
+              - 'backend/scripts/**'
+              - 'backend/db/**'
             flink:
               - 'backend/flink/**'
 
