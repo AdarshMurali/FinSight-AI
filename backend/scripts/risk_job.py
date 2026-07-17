@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _START_TIME = time.time()
 logger.info("===== RiskJob RUN STARTED =====")
+logger.info("[CICD-DEPLOY-VERIFY-20260717] risk_job.py code-refresh-via-CD test marker")
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
