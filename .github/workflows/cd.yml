@@ -19,6 +19,17 @@ name: CD
 # only images changed -- this is what fixed the 2026-07-17 incident where a
 # narrowly-scoped Flink EC2 checkout silently broke risk_job.py: cheap to
 # run, expensive to skip incorrectly.
+#
+# safe.directory is set (idempotently) before every git pull -- SSM always
+# runs commands as root, but both repo checkouts are owned by ec2-user (from
+# past manual `git pull` over SSH). Without this, git refuses to touch the
+# repo at all ("detected dubious ownership"), silently no-ops the pull, and
+# every deploy after that quietly redeploys stale code/images. Found on the
+# very first real production-backend CD run (2026-07-17): the pull failed,
+# the box's docker-compose.yml was still the pre-registry-image version, and
+# `docker compose pull` then failed too (wrong image name) -- masked at the
+# time by an unrelated IAM AccessDenied on ssm:GetCommandInvocation (see
+# aws/iam/README.md) that made the whole step look like a single failure.
 
 on:
   workflow_run:
@@ -46,6 +57,7 @@ jobs:
             --instance-ids i-0d5332841d8f8da41 \
             --document-name AWS-RunShellScript \
             --parameters commands='[
+              "git config --global --get-all safe.directory | grep -qx /home/ec2-user/FinSight-AI || git config --global --add safe.directory /home/ec2-user/FinSight-AI",
               "cd /home/ec2-user/FinSight-AI && git pull",
               "docker compose -f aws/ec2-backend/docker-compose.yml pull backend mcp",
               "docker compose -f aws/ec2-backend/docker-compose.yml up -d backend mcp valkey"
@@ -108,6 +120,7 @@ jobs:
             --instance-ids i-06df445415d082798 \
             --document-name AWS-RunShellScript \
             --parameters commands='[
+              "git config --global --get-all safe.directory | grep -qx /home/ec2-user/FinSight-AI || git config --global --add safe.directory /home/ec2-user/FinSight-AI",
               "cd /home/ec2-user/FinSight-AI && git pull",
               "docker compose -f aws/ec2-flink/docker-compose.yml pull flink-jobmanager flink-taskmanager trade-producer news-producer",
               "bash aws/ec2-flink/start_pipeline.sh"

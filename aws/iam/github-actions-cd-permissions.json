@@ -2,17 +2,20 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "SSMDeployBothEC2s",
+      "Sid": "SSMSendCommandBothEC2s",
       "Effect": "Allow",
-      "Action": [
-        "ssm:SendCommand",
-        "ssm:GetCommandInvocation"
-      ],
+      "Action": "ssm:SendCommand",
       "Resource": [
         "arn:aws:ec2:ap-south-1:301276846405:instance/i-0d5332841d8f8da41",
         "arn:aws:ec2:ap-south-1:301276846405:instance/i-06df445415d082798",
         "arn:aws:ssm:ap-south-1::document/AWS-RunShellScript"
       ]
+    },
+    {
+      "Sid": "SSMGetCommandInvocationNoResourceScoping",
+      "Effect": "Allow",
+      "Action": "ssm:GetCommandInvocation",
+      "Resource": "*"
     },
     {
       "Sid": "StartStopFlinkEC2Only",

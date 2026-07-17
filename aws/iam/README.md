@@ -19,16 +19,23 @@ federation. Credentials are minted fresh per job run and expire shortly after.
      always do) can assume it. A plain push-triggered job with no
      `environment:` set (like `ci.yml`, which never needs AWS at all) cannot.
    - Permissions policy (`github-actions-cd-permissions.json`):
-     - `ssm:SendCommand`/`ssm:GetCommandInvocation` scoped to exactly the two
-       EC2 instances (backend `i-0d5332841d8f8da41`, Flink `i-06df445415d082798`)
-       and the `AWS-RunShellScript` document
+     - `ssm:SendCommand` scoped to exactly the two EC2 instances (backend
+       `i-0d5332841d8f8da41`, Flink `i-06df445415d082798`) and the
+       `AWS-RunShellScript` document
+     - `ssm:GetCommandInvocation` — `Resource: "*"` is not a scoping choice
+       here, it's an AWS constraint: this action has no resource-level
+       permission support at all (confirmed live 2026-07-17 when the first
+       real CD run hit `AccessDeniedException` with an instance-scoped
+       resource — AWS's own doc for this action says `Resource: "*"` is
+       required, since invocation status/output isn't addressable by an
+       instance or command ARN at the IAM layer)
      - `ec2:StartInstances`/`StopInstances` scoped to the Flink EC2 only (needed
        so CD can start it if it's off outside market hours, then stop it again
        if CD is what started it)
      - `ec2:DescribeInstances`/`DescribeInstanceStatus` — `Resource: "*"`
-       is not a scoping choice here, it's an AWS constraint: these are
-       list-type actions that don't support resource-level IAM permissions
-       at all.
+       is not a scoping choice here either, it's the same AWS constraint:
+       these are list-type actions that don't support resource-level IAM
+       permissions at all.
 
 ## Recreating this from scratch
 
