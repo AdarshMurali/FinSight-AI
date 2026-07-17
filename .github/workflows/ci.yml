@@ -10,6 +10,7 @@ on:
     branches: [adarsh, main]
   pull_request:
     branches: [adarsh, main]
+  workflow_dispatch: {}   # manual "Run workflow" button/CLI -- always builds both images, path filter skipped
 
 jobs:
   # ── Detect which images actually need rebuilding ────────────────────────────
@@ -71,7 +72,7 @@ jobs:
   # ── Backend + MCP shared image ──────────────────────────────────────────────
   build-backend:
     needs: [changes, syntax-check]
-    if: needs.changes.outputs.backend == 'true'
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,7 +94,7 @@ jobs:
   # ── Flink + producer shared images ──────────────────────────────────────────
   build-flink:
     needs: [changes, syntax-check]
-    if: needs.changes.outputs.flink == 'true'
+    if: needs.changes.outputs.flink == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
