@@ -49,6 +49,16 @@ name: CD
 # run was also masked by an unrelated IAM AccessDenied on
 # ssm:GetCommandInvocation (see aws/iam/README.md), so both bugs looked like
 # a single opaque failure until fixed one layer at a time.
+#
+# Both deploy steps poll ssm:GetCommandInvocation manually in a loop (60x15s
+# backend, 90x15s Flink) instead of `aws ssm wait command-executed` -- that
+# waiter's default max wait is ~100s, nowhere near enough for a cold
+# `docker compose pull` of the Flink image (PyFlink + chromadb + openai
+# deps). Found on the first real production-flink run (2026-07-17): the
+# underlying SSM command was still healthy and `InProgress` (no error) when
+# the workflow gave up and reported failure -- and then stopped the EC2
+# right after, since the "stop if we started it" step runs regardless of
+# the deploy step's outcome.
 
 on:
   workflow_run:
@@ -83,9 +93,13 @@ jobs:
             ]' \
             --query "Command.CommandId" --output text)
           echo "Waiting for SSM command $CMD_ID..."
-          aws ssm wait command-executed --command-id "$CMD_ID" --instance-id i-0d5332841d8f8da41 || true
-          STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id i-0d5332841d8f8da41 --query "Status" --output text)
-          echo "SSM command status: $STATUS"
+          for i in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id i-0d5332841d8f8da41 --query "Status" --output text 2>/dev/null || echo "Pending")
+            echo "  [$i/60] status: $STATUS"
+            case "$STATUS" in Success|Failed|Cancelled|TimedOut) break ;; esac
+            sleep 15
+          done
+          echo "Final SSM command status: $STATUS"
           if [ "$STATUS" != "Success" ]; then
             aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id i-0d5332841d8f8da41 --query "StandardErrorContent" --output text
             exit 1
@@ -146,9 +160,13 @@ jobs:
             ]' \
             --query "Command.CommandId" --output text)
           echo "Waiting for SSM command $CMD_ID..."
-          aws ssm wait command-executed --command-id "$CMD_ID" --instance-id i-06df445415d082798 || true
-          STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id i-06df445415d082798 --query "Status" --output text)
-          echo "SSM command status: $STATUS"
+          for i in $(seq 1 90); do
+            STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id i-06df445415d082798 --query "Status" --output text 2>/dev/null || echo "Pending")
+            echo "  [$i/90] status: $STATUS"
+            case "$STATUS" in Success|Failed|Cancelled|TimedOut) break ;; esac
+            sleep 15
+          done
+          echo "Final SSM command status: $STATUS"
           if [ "$STATUS" != "Success" ]; then
             aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id i-06df445415d082798 --query "StandardErrorContent" --output text
             exit 1
