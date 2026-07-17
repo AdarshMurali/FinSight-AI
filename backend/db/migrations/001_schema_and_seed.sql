@@ -960,7 +960,7 @@ PRINT 'Transactions, Portfolio_Performance, and Market_Events inserted successfu
 -- ─────────────────────────────────────────────────────────────────────────────
 -- STEP 8: Users (fund managers) + Portfolios.manager_id (multi-tenant access)
 -- On a fresh install this table/column won't exist yet, so no IF NOT EXISTS
--- guards are needed here (unlike db_migration_auth.sql, which is the script
+-- guards are needed here (unlike 002_auth.sql, which is the script
 -- actually run against an already-populated production DB — see that file's
 -- header for why the two are kept separate).
 -- role: fund_manager | admin. Shared demo password 'FinSight2026!' — see AUTH.md.

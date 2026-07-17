@@ -11,7 +11,7 @@ ALTER TABLE Alerts ADD read_at DATETIME NULL;
 -- resurface with no cooldown at all).
 UPDATE Alerts SET read_at = last_triggered_at WHERE is_read = 1 AND read_at IS NULL;
 
--- Safety net: db_migration_alerts_v2.sql made last_triggered_at NOT NULL with no
+-- Safety net: 003_alerts_v2.sql made last_triggered_at NOT NULL with no
 -- server-side default (relying on the ORM's client-side default instead). Any
 -- code still running the OLD alert_engine.py (unaware this column exists at all)
 -- would omit it from its INSERTs and violate the NOT NULL constraint. A DB-level

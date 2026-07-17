@@ -1,6 +1,6 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Auth migration — additive only, safe to run against the live production DB.
--- Unlike db_migration_fix.sql, this does NOT delete/recreate Portfolios (which
+-- Unlike 001_schema_and_seed.sql, this does NOT delete/recreate Portfolios (which
 -- would violate the FK from Alerts/Risk_Metrics to Portfolios.portfolio_id and
 -- destroy accumulated alert/risk history). Idempotent — safe to re-run.
 -- ─────────────────────────────────────────────────────────────────────────────

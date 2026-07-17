@@ -3,8 +3,8 @@
 Part of Task 6.4 (see `plan.md`). Fund managers log in and see only the portfolios
 they manage — enforced at the data layer (`Portfolios.manager_id`), not just hidden
 in the UI. All accounts below are synthetic demo data seeded by
-`backend/db_migration_auth.sql` (production) / `backend/db_migration_fix.sql` (fresh
-installs) — not real credentials.
+`backend/db/migrations/002_auth.sql` (production) / `backend/db/migrations/001_schema_and_seed.sql`
+(fresh installs) — not real credentials.
 
 ## Demo accounts
 
@@ -26,8 +26,9 @@ Shared password for all accounts: **`FinSight2026!`**
 
 ## Migration files
 
-- `backend/db_migration_auth.sql` — **additive only**, idempotent, safe to re-run against the live production DB. Does not touch existing `Portfolios` rows beyond adding/backfilling `manager_id`.
-- `backend/db_migration_fix.sql` — the full wipe-and-rebuild script (STEP 8) now includes the same `Users`/`manager_id` setup, for a from-scratch fresh install. **Do not re-run this against production** — it deletes and recreates `Portfolios`, which would violate the FK from `Alerts`/`Risk_Metrics` and destroy accumulated alert/risk history.
+See `backend/db/migrations/README.md` for the full apply order. Relevant to auth specifically:
+- `002_auth.sql` — **additive only**, idempotent, safe to re-run against the live production DB. Does not touch existing `Portfolios` rows beyond adding/backfilling `manager_id`.
+- `001_schema_and_seed.sql` — the full wipe-and-rebuild script (STEP 8) now includes the same `Users`/`manager_id` setup, for a from-scratch fresh install. **Do not re-run this against production** — it deletes and recreates `Portfolios`, which would violate the FK from `Alerts`/`Risk_Metrics` and destroy accumulated alert/risk history.
 
 See `plan.md` Task 6.4 for the full auth architecture (JWT cookie flow, REST enforcement, AI chat tool scoping, MCP server scoping, WebSocket scoping).
 

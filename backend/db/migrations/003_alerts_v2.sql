@@ -4,7 +4,7 @@
 -- columns with backfilled defaults.
 --
 -- Safe to run against a live Alerts table with existing data. Not part of
--- db_migration_fix.sql (that file wipes/reseeds everything from scratch and
+-- 001_schema_and_seed.sql (that file wipes/reseeds everything from scratch and
 -- never included Alerts — the table is created at runtime via
 -- Base.metadata.create_all(), which does not ALTER existing tables).
 
