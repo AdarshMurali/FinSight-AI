@@ -6,15 +6,21 @@
 # compose project at /home/ec2-user/chromadb/docker-compose.yml.
 #
 # Usage (run from the FinSight-AI repo root on the EC2):
-#   docker compose -f aws/ec2-backend/docker-compose.yml build
-#   docker compose -f aws/ec2-backend/docker-compose.yml up -d <service>
+#   Manual local rebuild:  docker compose -f aws/ec2-backend/docker-compose.yml build
+#   CD registry deploy:    docker compose -f aws/ec2-backend/docker-compose.yml pull backend mcp
+#   Either way:            docker compose -f aws/ec2-backend/docker-compose.yml up -d <service>
+#
+# `build:` and `image:` are both present on purpose -- `build` still works for
+# manual local rebuilds (what every Phase 1 cutover this session used), while
+# `image:`'s registry-qualified name (adarshmurali/finsight-backend) is what
+# CD's `docker compose pull` fetches from Docker Hub (built by .github/workflows/ci.yml).
 
 services:
   backend:
     build:
       context: ../../backend
       dockerfile: Dockerfile
-    image: finsight-backend:latest
+    image: adarshmurali/finsight-backend:latest
     container_name: finsight-backend
     env_file:
       - ../../backend/.env
@@ -40,7 +46,7 @@ services:
     build:
       context: ../../backend
       dockerfile: Dockerfile
-    image: finsight-backend:latest
+    image: adarshmurali/finsight-backend:latest
     container_name: finsight-mcp
     command: ["python", "mcp_server.py", "--transport", "sse", "--port", "8002"]
     env_file:

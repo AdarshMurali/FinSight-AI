@@ -3,6 +3,12 @@
 # Fill in KAFKA_EXTERNAL_IP and CHROMADB_EC2_IP before first run.
 # Start: docker compose -f docker-compose.yml up -d
 # Stop:  docker compose -f docker-compose.yml down
+#
+# flink-jobmanager/taskmanager and trade/news-producer have both `build:` and
+# `image:` on purpose -- `build` still works for manual local rebuilds, while
+# `image:`'s registry-qualified name (adarshmurali/finsight-flink,
+# adarshmurali/finsight-producer) is what CD's `docker compose pull` fetches
+# from Docker Hub (built by .github/workflows/ci.yml).
 
 services:
 
@@ -67,7 +73,7 @@ services:
     build:
       context: /home/ec2-user/FinSight-AI/backend/flink
       dockerfile: Dockerfile
-    image: finsight-flink:1.18
+    image: adarshmurali/finsight-flink:latest
     container_name: finsight-flink-jobmanager
     hostname: flink-jobmanager
     command: jobmanager
@@ -97,7 +103,7 @@ services:
     build:
       context: /home/ec2-user/FinSight-AI/backend/flink
       dockerfile: Dockerfile
-    image: finsight-flink:1.18
+    image: adarshmurali/finsight-flink:latest
     container_name: finsight-flink-taskmanager
     hostname: flink-taskmanager
     command: taskmanager
@@ -133,7 +139,7 @@ services:
     build:
       context: /home/ec2-user/FinSight-AI/backend/flink
       dockerfile: Dockerfile.producer
-    image: finsight-producer:latest
+    image: adarshmurali/finsight-producer:latest
     container_name: finsight-trade-producer
     command: ["python", "-u", "finnhub_trade_producer.py"]
     environment:
@@ -150,7 +156,7 @@ services:
     build:
       context: /home/ec2-user/FinSight-AI/backend/flink
       dockerfile: Dockerfile.producer
-    image: finsight-producer:latest
+    image: adarshmurali/finsight-producer:latest
     container_name: finsight-news-producer
     command: ["python", "-u", "finnhub_news_producer.py"]
     environment:

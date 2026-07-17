@@ -1,0 +1,130 @@
+name: CD
+
+# Deploys to the two EC2s. Two independent jobs, two independent GitHub
+# Environments (production-backend / production-flink), each with its own
+# required-reviewer approval gate -- approve one without the other if a
+# change only touches one side. Nothing in this workflow runs before its
+# job's approval is granted, including the Flink EC2 start-if-stopped step
+# below (the whole job is paused by the environment protection rule until
+# approved).
+#
+# AWS access via OIDC (see aws/iam/README.md) -- no stored AWS keys.
+#
+# Deliberately NOT path-filtered like ci.yml: by the time a human is
+# reviewing the approval prompt, they can see the diff themselves and decide
+# whether this box needs the deploy. Automating that decision away would
+# defeat the point of having two separate approval gates.
+#
+# git pull always runs on both deploy targets before anything else, even if
+# only images changed -- this is what fixed the 2026-07-17 incident where a
+# narrowly-scoped Flink EC2 checkout silently broke risk_job.py: cheap to
+# run, expensive to skip incorrectly.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch: {}
+
+jobs:
+  deploy-backend:
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production-backend
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CD_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - name: Deploy to backend EC2
+        run: |
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids i-0d5332841d8f8da41 \
+            --document-name AWS-RunShellScript \
+            --parameters commands='[
+              "cd /home/ec2-user/FinSight-AI && git pull",
+              "docker compose -f aws/ec2-backend/docker-compose.yml pull backend mcp",
+              "docker compose -f aws/ec2-backend/docker-compose.yml up -d backend mcp valkey"
+            ]' \
+            --query "Command.CommandId" --output text)
+          echo "Waiting for SSM command $CMD_ID..."
+          aws ssm wait command-executed --command-id "$CMD_ID" --instance-id i-0d5332841d8f8da41 || true
+          STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id i-0d5332841d8f8da41 --query "Status" --output text)
+          echo "SSM command status: $STATUS"
+          if [ "$STATUS" != "Success" ]; then
+            aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id i-0d5332841d8f8da41 --query "StandardErrorContent" --output text
+            exit 1
+          fi
+
+      - name: Verify health endpoint
+        run: |
+          sleep 5
+          curl -sf https://api.fin-sightai.space/health
+
+  deploy-flink:
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production-flink
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CD_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      # Nothing above this line runs before approval -- this step (and every
+      # step after it) only executes once the production-flink environment's
+      # required reviewer approves the job.
+      - name: Start Flink EC2 if it's currently stopped
+        id: ensure-running
+        run: |
+          STATE=$(aws ec2 describe-instances --instance-ids i-06df445415d082798 \
+            --query "Reservations[0].Instances[0].State.Name" --output text)
+          echo "Current state: $STATE"
+          if [ "$STATE" = "stopped" ]; then
+            echo "we_started_it=true" >> "$GITHUB_OUTPUT"
+            aws ec2 start-instances --instance-ids i-06df445415d082798
+            echo "Waiting for SSM agent to come online..."
+            for i in $(seq 1 30); do
+              PING=$(aws ssm describe-instance-information \
+                --filters "Key=InstanceIds,Values=i-06df445415d082798" \
+                --query "InstanceInformationList[0].PingStatus" --output text 2>/dev/null || echo "")
+              [ "$PING" = "Online" ] && break
+              sleep 10
+            done
+          else
+            echo "we_started_it=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to Flink EC2
+        run: |
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids i-06df445415d082798 \
+            --document-name AWS-RunShellScript \
+            --parameters commands='[
+              "cd /home/ec2-user/FinSight-AI && git pull",
+              "docker compose -f aws/ec2-flink/docker-compose.yml pull flink-jobmanager flink-taskmanager trade-producer news-producer",
+              "bash aws/ec2-flink/start_pipeline.sh"
+            ]' \
+            --query "Command.CommandId" --output text)
+          echo "Waiting for SSM command $CMD_ID..."
+          aws ssm wait command-executed --command-id "$CMD_ID" --instance-id i-06df445415d082798 || true
+          STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id i-06df445415d082798 --query "Status" --output text)
+          echo "SSM command status: $STATUS"
+          if [ "$STATUS" != "Success" ]; then
+            aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id i-06df445415d082798 --query "StandardErrorContent" --output text
+            exit 1
+          fi
+
+      # Restore prior state -- only stop it if THIS job is what started it.
+      # If it was already running (deploy landed during market hours), leave
+      # it exactly as the Lambda scheduler expects to find it.
+      - name: Stop Flink EC2 if we started it
+        if: always() && steps.ensure-running.outputs.we_started_it == 'true'
+        run: aws ec2 stop-instances --instance-ids i-06df445415d082798
