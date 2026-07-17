@@ -717,7 +717,7 @@ cd "C:\Agentic_AI\FinSight-AI\backend"
 
 **Deploy gap found and fixed (2026-07-14)**: this section previously (wrongly) said event/AI alerts were "stubbed, no engine yet" — the code was real, but had never actually reached the Flink EC2, which is where `risk_job.py` runs on a schedule. That box is deployed by manual file copy (not `git clone`/`pull` like the backend EC2), and hadn't been touched since 2026-07-06/07 — five days before this feature was committed. `CLOUD_MIGRATION.md`'s 2026-07-11 log entry claiming these were "deployed to production" was conflating the backend-API deploy (which *did* happen, via git pull on the ChromaDB EC2) with this separate batch-job box. Fixed by tarring the current `backend/` (excluding `.env`/cruft) and scp'ing it over, preserving the box's own `.env`. Verified with a real manual run before trusting the schedule (same lesson as the original `risk_job.py` outage — see `CLOUD_MIGRATION.md`): 50/50 portfolios succeeded, 3 real AI alerts generated (~$0.008 total), 0 event alerts (ran without error — current event data just didn't cross the exposure threshold for any portfolio this pass, not a failure).
 
-**Known process gap — deliberately deferred, not abandoned (decided 2026-07-14, reconfirmed 2026-07-15)**: the Flink EC2 still has no git repo. Converting it ad-hoc was considered and rejected twice now — the real fix is Task 6.3 (CI/CD) setting up proper deploy auth for both EC2s at once; a one-off conversion now would just be redone differently later. Until then, use the documented manual process in `CLOUD_MIGRATION.md` ("Redeploying backend code to the Flink EC2") for any change touching `risk_job.py`/`alert_engine.py`/anything else they import, and update that file's Session Log every time.
+**Resolved 2026-07-17**: the Flink EC2 no longer has this gap. Converted to a `git sparse-checkout` clone as part of Task 6.1 Dockerization Phase 2 (2026-07-16), then Task 6.3's CD pipeline (2026-07-17) took over deploying to it automatically — `risk_job.py`/`alert_engine.py`/anything else they import now lands via `production-flink`'s `git pull` step on every approved deploy, verified end-to-end with a real marker committed and observed in live execution output. The manual tar+scp process in `CLOUD_MIGRATION.md` is retired (kept there for historical reference only).
 
 **2026-07-15 — Alert dedup/mute/portfolio-name pass, found from real user feedback (not a pre-planned task)**:
 - **Problem observed**: fund manager returning after a time away saw a wall of near-duplicate alerts — verified against production data, one portfolio had 33 alert rows generated from just 8 `risk_job.py` runs, because the old per-day dedup inserted a fresh row every single run a condition stayed breached. Separately, the bell badge (unread count) and the panel list (top 30 active alerts, mixed read/unread) didn't match, and alerts on the aggregated home-page view gave no indication of *which* portfolio they were about — five alerts about the same market event across five portfolios looked like five duplicates of one alert.
@@ -892,21 +892,22 @@ work rather than deferring further — no more tar/scp deploys here either. Full
 
 ---
 
-#### Task 6.3: Deployment & CI/CD — PARTIALLY COMPLETE (backend cloud deploy done 2026-07-09)
+#### Task 6.3: Deployment & CI/CD — ✅ Done (CI/CD pipeline built + verified 2026-07-17)
 **Goal**: Production-ready deployment
 
 **What's done**:
 1. ✅ Cloud infrastructure — FastAPI backend deployed to the existing ChromaDB EC2 (`13.206.225.80`), reused rather than a new box ($0 extra cost). Domain `fin-sightai.space` (GoDaddy) — `api.fin-sightai.space` (backend), `www.fin-sightai.space` (frontend, Vercel). `nginx` + Certbot for HTTPS, `systemd` for process management/auto-restart. Full writeup: `CLOUD_MIGRATION.md`.
 2. ✅ Managed SQL Server — already on Azure SQL since Phase 1.
-3. ⏳ CI/CD pipeline (GitHub Actions) — still manual (`git pull` + `systemctl restart` over SSH/SSM). Not started.
+3. ✅ **CI/CD pipeline (GitHub Actions)** — `.github/workflows/ci.yml` builds/pushes `finsight-backend`, `finsight-flink`, `finsight-producer` to Docker Hub (path-filtered so unrelated changes don't trigger unnecessary rebuilds). `.github/workflows/cd.yml` deploys via AWS SSM, gated behind two independent GitHub Environments (`production-backend`/`production-flink`) with required-reviewer approval — a backend-only change can be approved without touching the Flink EC2 and vice versa, verified live. AWS access via OIDC federation (`aws/iam/`), no stored AWS keys. Both EC2s converted to `git sparse-checkout` clones (previously the Flink EC2 was tar+scp only — see `CLOUD_MIGRATION.md`'s now-retired "Redeploying to the Flink EC2" section). Non-containerized scheduled scripts (`risk_job.py`, `price_update_job.py` on the Flink EC2; `market_events_job.py` on the backend EC2) get code updates via the same `git pull` CD step, no image needed — verified end-to-end with a real marker committed, deployed, and observed in live `risk_job.py` execution output. Real bugs found and fixed while building this (IAM `ssm:GetCommandInvocation` resource scoping, root-vs-`ec2-user` git/SSH ownership mismatches, SSM wait timeouts, Flink job duplicate-submission resource contention, hash-based job redeploy staleness, CI image-rebuild path-filter granularity) — full incident-by-incident writeup in `status.md`.
 4. ⏳ Health checks and monitoring — `/health` endpoint exists, no external monitoring/alerting wired up yet.
 5. ⏳ Logging — plain file logs (`journalctl`/log files on EC2), no ELK/CloudWatch aggregation.
-6. ⏳ Secrets management — `.env` files on disk, not AWS Secrets Manager (see Phase 7 Task 7.2 below).
+6. ✅ Secrets management — done via Phase 7 Task 7.2 (AWS Secrets Manager + SSM Parameter Store), see below.
+
+**Known, deliberate exceptions — not in CI/CD, left as manual-deploy** (decided 2026-07-17): ChromaDB (separate compose project, already stable, excluded from day one) and `aws/lambda/ec2_scheduler.py` (the market-open/close EC2 power-scheduler Lambda — source is version-controlled but a change needs manual `aws lambda update-function-code`, found while auditing full pipeline coverage, not wired into either workflow).
 
 **Remaining Deliverables**:
-- CI/CD pipeline (GitHub Actions)
 - Monitoring dashboards
-- Secrets management
+- Log aggregation
 
 ---
 

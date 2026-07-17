@@ -4,20 +4,28 @@ After every system restart, follow these steps **in order**. Each service depend
 
 ---
 
-## Current Infrastructure (as of 2026-07-06)
+## Current Infrastructure (as of 2026-07-06 — ⚠️ significantly stale, see note below)
 
-All data services are now fully in the cloud — **Docker Desktop is no longer required** for normal operation.
+> **This file predates Dockerization (2026-07-16) and real CI/CD (2026-07-17) and has not had
+> a full pass since.** The table below is corrected for the facts that most affect anyone using
+> this guide (everything is live in production now, not local-only); the detailed steps further
+> down (local `uvicorn`/`npm run dev` commands, `docker-compose-streaming.yml`, and all of
+> **Section 8 — MCP Server**, which still documents the retired nohup+PID deployment on the
+> wrong EC2) have not been re-verified against current reality and may not work as written. See
+> `CLOUD_MIGRATION.md` and `status.md`/`plan.md` Task 6.1/6.3 for what's actually current.
+
+All data services are now fully in the cloud — **Docker Desktop is no longer required** for normal operation. Backend, MCP, and frontend are now also live in production (see below), not local-only — this guide's local-startup steps are for development, not a prerequisite for the app to function.
 
 | Component | Where | Address |
 |---|---|---|
 | **SQL Server** | Azure SQL | `finsight-sql-server.database.windows.net` |
-| **ChromaDB** | AWS EC2 `finsight-chromadb` | `13.206.225.80:8001` |
-| **Kafka + Flink** | AWS EC2 `finsight-flink` | `13.233.21.229` |
-| **MCP Server** | AWS EC2 `finsight-flink` | `13.233.21.229:8002` |
-| **Backend API** | Local (until CI/CD) | `localhost:8000` |
-| **Frontend** | Local (until CI/CD) or Vercel | `localhost:3000` / Vercel |
+| **ChromaDB** | AWS EC2 `finsight-chromadb`/backend EC2 (`13.206.225.80`) | `13.206.225.80:8001` |
+| **Kafka + Flink** | AWS EC2 `finsight-flink`, fully Dockerized 2026-07-16 | `13.233.21.229` |
+| **MCP Server** | Backend/ChromaDB EC2 (`13.206.225.80`), **moved off the Flink EC2 2026-07-11, Dockerized 2026-07-16** | `13.206.225.80:8002/sse` |
+| **Backend API** | **Live in production** (`https://api.fin-sightai.space`), Dockerized 2026-07-16 — local `uvicorn` run below is for development only | `localhost:8000` (dev) / `api.fin-sightai.space` (prod) |
+| **Frontend** | **Live in production** (`https://www.fin-sightai.space`, Vercel, auto-deploys on push) — local `npm run dev` below is for development only | `localhost:3000` (dev) / Vercel (prod) |
 
-> **Future plan**: Containerise frontend + backend and deploy via GitHub Actions CI/CD pipeline (Phase 6). For now, manual SCP deployment.
+> **CI/CD status**: done, not future plan. `.github/workflows/ci.yml` builds/pushes Docker images; `cd.yml` deploys to both EC2s via AWS SSM, gated behind two independent GitHub Environment approvals (`production-backend`/`production-flink`). See `status.md` Task 6.3 for the full writeup, real bugs found/fixed, and live verification.
 
 ---
 
@@ -802,12 +810,22 @@ The cron window fires once at 9:25 AM ET. If the EC2 starts late (Lambda delay o
 
 ## Section 8: MCP Server — FinSight AI on Claude / Cursor / VS Code
 
+> ⚠️ **This entire section is stale (pre-2026-07-11) and describes a retired deployment.** The
+> MCP server moved off the Flink EC2 to the backend/ChromaDB EC2 on 2026-07-11, then was
+> Dockerized on 2026-07-16 (it's now the `mcp` service in `aws/ec2-backend/docker-compose.yml`,
+> same image as the backend API, deployed automatically via the `production-backend` CD job —
+> see `CLOUD_MIGRATION.md`). The nohup+PID start/restart commands, file paths, and EC2/port
+> details below no longer reflect reality (SSE endpoint is now `13.206.225.80:8002/sse`, not
+> `13.233.21.229:8002/sse` — the connection JSON snippets further down are wrong for that
+> reason). Not rewritten in detail here; treat this section as historical reference only until
+> it gets a real pass.
+
 The MCP (Model Context Protocol) server exposes FinSight's portfolio intelligence as tools
 that any AI assistant can call. Fund managers can query live portfolios, risk metrics,
 market context, and ChromaDB's 39,000+ financial documents — all from within Claude Desktop,
 Cursor, or VS Code.
 
-**The server runs permanently on the Flink EC2 in SSE (HTTP) mode.**
+**The server runs permanently on the Flink EC2 in SSE (HTTP) mode.** *(stale — see banner above)*
 
 ### Server Details
 
@@ -965,22 +983,9 @@ Installed via: `sudo ACCEPT_EULA=Y dnf install msodbcsql18 unixODBC-devel`
 
 ---
 
-### Update MCP server code (manual — pre-CI/CD)
+### Update MCP server code — ⛔ retired, see banner at top of this section
 
-```powershell
-# SCP the updated file(s) from local
-scp -i C:\Agentic_AI\aws\finsight-key.pem `
-  C:\Agentic_AI\FinSight-AI\backend\mcp_server.py `
-  ec2-user@13.233.21.229:/home/ec2-user/FinSight-AI/backend/mcp_server.py
-
-# SSH in and restart
-ssh -i C:\Agentic_AI\aws\finsight-key.pem ec2-user@13.233.21.229
-kill $(cat /home/ec2-user/mcp_server.pid) 2>/dev/null
-PYTHONUNBUFFERED=1 nohup /home/ec2-user/FinSight-AI/mcpvenv/bin/python \
-  /home/ec2-user/FinSight-AI/backend/mcp_server.py \
-  --transport sse --port 8002 \
-  > /home/ec2-user/logs/mcp_server.log 2>&1 &
-echo $! > /home/ec2-user/mcp_server.pid
-```
-
-> **CI/CD note**: This manual SCP workflow will be replaced by GitHub Actions in Phase 6.
+This manual SCP+nohup workflow no longer applies. MCP code updates now happen automatically:
+commit to `backend/`, push, approve the `production-backend` GitHub Environment in
+`cd.yml` — the CD job runs `git pull` + `docker compose up -d backend mcp valkey` on the
+backend/ChromaDB EC2. See `CLOUD_MIGRATION.md` and `status.md` Task 6.3.
