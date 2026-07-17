@@ -12,9 +12,6 @@ Submit from inside the Flink container:
 
 Runs continuously (streaming mode).
 """
-# CICD-HASH-FIX-VERIFY-20260717: trivial comment-only change to test that
-# the hash-based redeploy fix actually cancels+resubmits this specific job
-# while leaving news_sentiment_job.py's job untouched. Will be reverted.
 
 import os
 import json
