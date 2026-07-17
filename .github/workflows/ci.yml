@@ -24,11 +24,29 @@ jobs:
   #
   # backend/backfill_scripts/** is deliberately NOT listed -- excluded from CI
   # entirely, one-time scripts, never containerized, never auto-deployed.
+  # flink_image and producer_image are deliberately split, not one combined
+  # "flink" filter -- backend/flink/Dockerfile bakes in nothing but the Kafka
+  # connector jar + pip deps (no .py files at all; the Flink jobs get their
+  # code via the docker-compose volume mount, not the image), while
+  # Dockerfile.producer's COPY genuinely bakes in config.py + both producer
+  # scripts. A single combined filter meant editing volatility_detector_job.py
+  # or news_sentiment_job.py -- files the finsight-flink image doesn't even
+  # contain -- triggered a full image rebuild anyway, and that rebuild's
+  # `docker compose pull` + `up -d` on the next deploy recreated the
+  # jobmanager container (since its image digest changed), wiping every
+  # running Flink job even though only one job's code had actually changed.
+  # Found live testing the job-level hash-based redeploy fix in
+  # start_pipeline.sh (2026-07-17) -- that fix is supposed to cancel/resubmit
+  # only the one job whose code changed, but got masked by this coarser,
+  # unrelated container recreation. Job .py files need no image-build filter
+  # entry at all: cd.yml's unconditional `git pull` + the volume mount is
+  # the entire deploy mechanism for them already.
   changes:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
-      flink: ${{ steps.filter.outputs.flink }}
+      flink_image: ${{ steps.filter.outputs.flink_image }}
+      producer_image: ${{ steps.filter.outputs.producer_image }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -45,8 +63,13 @@ jobs:
               - 'backend/rag/**'
               - 'backend/scripts/**'
               - 'backend/db/**'
-            flink:
-              - 'backend/flink/**'
+            flink_image:
+              - 'backend/flink/Dockerfile'
+            producer_image:
+              - 'backend/flink/Dockerfile.producer'
+              - 'backend/flink/config.py'
+              - 'backend/flink/finnhub_trade_producer.py'
+              - 'backend/flink/finnhub_news_producer.py'
 
   # ── Syntax/import check ──────────────────────────────────────────────────────
   # backend/test_api.py and test_phase3.py are NOT run here -- both need a live
@@ -91,10 +114,12 @@ jobs:
             ${{ vars.DOCKERHUB_USERNAME }}/finsight-backend:latest
             ${{ vars.DOCKERHUB_USERNAME }}/finsight-backend:${{ github.sha }}
 
-  # ── Flink + producer shared images ──────────────────────────────────────────
+  # ── Flink image (jobmanager/taskmanager) ─────────────────────────────────────
+  # Only rebuilds on backend/flink/Dockerfile changes -- see the `changes` job
+  # comment above for why job .py files and config.py don't belong here.
   build-flink:
     needs: [changes, syntax-check]
-    if: needs.changes.outputs.flink == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.changes.outputs.flink_image == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -125,6 +150,22 @@ jobs:
           tags: |
             ${{ vars.DOCKERHUB_USERNAME }}/finsight-flink:latest
             ${{ vars.DOCKERHUB_USERNAME }}/finsight-flink:${{ github.sha }}
+
+  # ── Producer image (trade/news producers) ────────────────────────────────────
+  # Rebuilds on its own Dockerfile.producer plus the exact files it COPYs in
+  # (config.py, both producer scripts) -- unlike the Flink jobs, these run
+  # purely from what's baked into the image, no volume mount override.
+  build-producer:
+    needs: [changes, syntax-check]
+    if: needs.changes.outputs.producer_image == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build + push finsight-producer
         uses: docker/build-push-action@v6
