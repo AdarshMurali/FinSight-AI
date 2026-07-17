@@ -1,0 +1,126 @@
+name: CI
+
+# Builds and pushes Docker images to Docker Hub. Does NOT deploy anything --
+# that's cd.yml, gated behind manual approval per EC2. This workflow only
+# ever produces artifacts (images tagged with the commit SHA + `latest`);
+# nothing it does touches the running EC2s.
+
+on:
+  push:
+    branches: [adarsh, main]
+  pull_request:
+    branches: [adarsh, main]
+
+jobs:
+  # ── Detect which images actually need rebuilding ────────────────────────────
+  # backend/** (excluding flink/ and backfill_scripts/) -> finsight-backend
+  # backend/flink/**                                    -> finsight-flink + finsight-producer
+  # backend/backfill_scripts/** is deliberately excluded from CI entirely --
+  # one-time scripts, never containerized, never auto-deployed.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      flink: ${{ steps.filter.outputs.flink }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '!backend/flink/**'
+              - '!backend/backfill_scripts/**'
+            flink:
+              - 'backend/flink/**'
+
+  # ── Syntax/import check ──────────────────────────────────────────────────────
+  # backend/test_api.py and test_phase3.py are NOT run here -- both need a live
+  # server + live Azure SQL connection (test_phase3.py also makes real OpenAI
+  # calls), and Azure SQL's firewall is IP-allowlisted, not reachable from
+  # GitHub-hosted runners. Making them CI-safe needs real rework (mocking the
+  # DB/API layers), tracked as a follow-up, not silently skipped without a
+  # reason. This step is the practical stand-in: catches real bugs (e.g. the
+  # pydantic version conflict from the backend EC2 Dockerization) before they
+  # reach an image build.
+  syntax-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile-check every backend .py file
+        run: |
+          find backend -name '*.py' -not -path '*/node_modules/*' -print0 \
+            | xargs -0 -n1 python -m py_compile
+
+  # ── Backend + MCP shared image ──────────────────────────────────────────────
+  build-backend:
+    needs: [changes, syntax-check]
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          # PRs build (verifies the image actually compiles) but don't push --
+          # only real pushes to adarsh/main should touch Docker Hub's `latest`.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ vars.DOCKERHUB_USERNAME }}/finsight-backend:latest
+            ${{ vars.DOCKERHUB_USERNAME }}/finsight-backend:${{ github.sha }}
+
+  # ── Flink + producer shared images ──────────────────────────────────────────
+  build-flink:
+    needs: [changes, syntax-check]
+    if: needs.changes.outputs.flink == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # flink-sql-connector-kafka-*.jar is gitignored (large binary, kept out
+      # of the repo on purpose) -- backend/flink/Dockerfile expects it present
+      # in the build context. Fetched fresh from Maven Central each run
+      # (verified reachable + correct size, 5,596,853 bytes, matches what's
+      # deployed on the Flink EC2).
+      - name: Fetch Kafka SQL connector jar
+        run: |
+          curl -sSL -o backend/flink/flink-sql-connector-kafka-3.1.0-1.18.jar \
+            https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.1.0-1.18/flink-sql-connector-kafka-3.1.0-1.18.jar
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build + push finsight-flink
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/flink
+          file: ./backend/flink/Dockerfile
+          # PRs build (verifies the image actually compiles) but don't push --
+          # only real pushes to adarsh/main should touch Docker Hub's `latest`.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ vars.DOCKERHUB_USERNAME }}/finsight-flink:latest
+            ${{ vars.DOCKERHUB_USERNAME }}/finsight-flink:${{ github.sha }}
+
+      - name: Build + push finsight-producer
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/flink
+          file: ./backend/flink/Dockerfile.producer
+          # PRs build (verifies the image actually compiles) but don't push --
+          # only real pushes to adarsh/main should touch Docker Hub's `latest`.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ vars.DOCKERHUB_USERNAME }}/finsight-producer:latest
+            ${{ vars.DOCKERHUB_USERNAME }}/finsight-producer:${{ github.sha }}
