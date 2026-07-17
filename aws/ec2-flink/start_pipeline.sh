@@ -46,7 +46,7 @@ for i in $(seq 1 30); do
   sleep 5
 done
 
-# ── Step 5+6: Submit jobs, skipping any already RUNNING ──────
+# ── Step 5+6: Submit jobs, resubmitting only when code changed ──
 # Not idempotent before 2026-07-17: every invocation called `flink run`
 # unconditionally, so a manual retry, a re-approved CD deploy, or cron
 # overlapping either of those created a second concurrent instance of the
@@ -54,10 +54,30 @@ done
 # + two "FinSight News Sentiment Stream" instances fighting over them left
 # every one of the four in a terminal FAILED state within ~20 minutes
 # (NoResourceAvailableException, no restart strategy configured) -- found
-# live via a production-flink CD approval test. Checking jobs/overview for
-# a RUNNING job with the target name first makes every submission path safe
-# to repeat.
-job_is_running() {
+# live via a production-flink CD approval test.
+#
+# A plain "skip if a RUNNING job with this name exists" check (the
+# first fix) closes that hole but opens a different one: it can't tell
+# a healthy job apart from a *stale* one, so editing volatility_detector_job.py
+# or news_sentiment_job.py and redeploying while the old job is still up
+# silently never loads the new code. Fixed here by tracking a content hash
+# of each job's .py file alongside the running job -- same name AND same
+# hash means truly nothing changed (skip, matching the first fix's
+# behavior exactly), same name but different hash means the code moved out
+# from under a still-running job (cancel it, then resubmit), and no running
+# job at all just submits fresh either way.
+VERSION_DIR=/home/ec2-user/.flink_job_versions
+# world-writable on purpose: this script runs as root when CD invokes it via
+# SSM but as ec2-user when cron invokes it directly, and whichever one
+# creates the directory/files first would otherwise leave the other unable
+# to write here on its next run (the exact ownership-mismatch pattern that
+# broke git pull and SSH for this same root-vs-ec2-user split earlier today).
+# Contents are just non-sensitive hash markers, so permissive perms cost
+# nothing here.
+mkdir -p "$VERSION_DIR"
+chmod 777 "$VERSION_DIR"
+
+get_running_job_id() {
   # Flatten out the nested "tasks":{...} object first -- grep -oE '\{[^{}]*\}'
   # can't see past nested braces, so without this it would silently match
   # each job's inner tasks object instead of the job object itself and never
@@ -67,24 +87,45 @@ job_is_running() {
     | sed 's/,"tasks":{[^}]*}//g' \
     | grep -oE '\{[^{}]*\}' \
     | grep -F "\"name\":\"$1\"" \
-    | grep -q '"state":"RUNNING"'
+    | grep '"state":"RUNNING"' \
+    | grep -oE '"jid":"[^"]*"' \
+    | head -1 \
+    | cut -d'"' -f4
 }
 
-if job_is_running "FinSight Volatility Detector"; then
-  log "Volatility detector job already RUNNING, skipping submission."
-else
-  log "Submitting volatility detector Flink job..."
-  docker exec finsight-flink-jobmanager \
-    flink run --detached -py /opt/flink/jobs/volatility_detector_job.py
-fi
+deploy_job() {
+  local job_name="$1"      # Flink's own display name, e.g. "FinSight Volatility Detector"
+  local job_file="$2"      # filename only, e.g. volatility_detector_job.py
+  local version_key="$3"   # filesystem-safe key for the stored hash, e.g. volatility_detector
 
-if job_is_running "FinSight News Sentiment Stream"; then
-  log "News sentiment job already RUNNING, skipping submission."
-else
-  log "Submitting news sentiment Flink job..."
+  local current_hash
+  current_hash=$(sha256sum "$REPO/backend/flink/$job_file" | cut -d' ' -f1)
+  local version_file="$VERSION_DIR/$version_key.sha256"
+  local stored_hash=""
+  [ -f "$version_file" ] && stored_hash=$(cat "$version_file")
+
+  local running_jid
+  running_jid=$(get_running_job_id "$job_name")
+
+  if [ -n "$running_jid" ] && [ "$current_hash" = "$stored_hash" ]; then
+    log "$job_name already RUNNING with current code ($running_jid), skipping submission."
+    return
+  fi
+
+  if [ -n "$running_jid" ]; then
+    log "$job_name RUNNING ($running_jid) but code changed, cancelling before resubmitting..."
+    docker exec finsight-flink-jobmanager flink cancel "$running_jid"
+  fi
+
+  log "Submitting $job_name Flink job..."
   docker exec finsight-flink-jobmanager \
-    flink run --detached -py /opt/flink/jobs/news_sentiment_job.py
-fi
+    flink run --detached -py "/opt/flink/jobs/$job_file"
+  echo "$current_hash" > "$version_file"
+  chmod 666 "$version_file"
+}
+
+deploy_job "FinSight Volatility Detector" "volatility_detector_job.py" "volatility_detector"
+deploy_job "FinSight News Sentiment Stream" "news_sentiment_job.py" "news_sentiment"
 
 log "Flink jobs submitted. Verifying state..."
 sleep 10
