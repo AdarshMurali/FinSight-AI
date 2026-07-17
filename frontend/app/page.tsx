@@ -1,23 +1,56 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { getPortfolios, getMarketEvents, getAlerts, markAlertRead, Portfolio, MarketEvent, AlertItem } from "@/lib/api";
+import { Manrope } from "next/font/google";
+import {
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
+} from "recharts";
+import {
+  getPortfolios, getAlerts, markAlertRead, getSecuritiesCount,
+  Portfolio, AlertItem,
+} from "@/lib/api";
 import { useWebSocket, WsMessage } from "@/hooks/useWebSocket";
-import LoadingSpinner from "@/components/LoadingSpinner";
-import { ArrowRight, ChevronRight, X, Sparkles } from "lucide-react";
+import {
+  ArrowUpRight, ArrowDownRight, ArrowRight, X, Sparkles, Wallet,
+  LayoutGrid, Layers, TrendingUp,
+} from "lucide-react";
 
-// ── Diverging orange scale (bright → dark) ────────────────────────────────────
-const ORANGE_SCALE = ["#FFA040", "#FF8000", "#E05C00", "#CC4400", "#993300", "#7A2500", "#5C1800", "#3D1000"];
+// ── FinSight AI dashboard — Bloomberg Professional–inspired visual language.
+// Re-themed around Bloomberg's own black→amber→gold gradient (sampled from
+// professional.bloomberg.com's CSS: #010101 → #c47c10 → #fabd49) and a
+// licensed-substitute font (Manrope, standing in for their proprietary
+// Avenir Next Pro for Bloomberg). A preview of this design also lives at
+// /home-bloomberg for reference.
+const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] });
 
-function orangeByRank(index: number, total: number): string {
+const NEAR_BLACK = "#0a0a0a";
+const GOLD    = "#fabd49";
+const WHITE   = "#FFFFFF";
+const MUTED   = "#9C9CA5";
+const GREEN   = "#00C853";
+const RED     = "#e51e3c";
+const WARNING = "#FFCC1D";
+const BORDER  = "rgba(250,189,73,0.14)";
+
+// On-brand gold ramp (bright → dark) instead of a rainbow categorical set —
+// an ordinal/sequential scale reads cleaner here and stays colorblind-safe
+// by construction (differentiated by lightness, not hue). Ranked by strategy
+// popularity, so the most common strategy gets the brightest gold.
+const GOLD_SCALE = ["#FFE7A8", "#FCCB6B", "#FABD49", "#E0A030", "#C47C10", "#9C6410", "#7A4E0E", "#5C3B0C"];
+const OTHER_GRAY     = "#5a5b63";
+const CHART_SURFACE = "#1a1a19";
+
+function goldByRank(index: number, total: number): string {
   const i = Math.min(
-    Math.round((index / Math.max(total - 1, 1)) * (ORANGE_SCALE.length - 1)),
-    ORANGE_SCALE.length - 1
+    Math.round((index / Math.max(total - 1, 1)) * (GOLD_SCALE.length - 1)),
+    GOLD_SCALE.length - 1
   );
-  return ORANGE_SCALE[i];
+  return GOLD_SCALE[i];
 }
 
-// ── Formatters ────────────────────────────────────────────────────────────────
+const CARD_SHADOW       = "0 1rem 2.8rem rgba(0,0,0,0.5)";
+const CARD_SHADOW_HOVER = "0 1.6rem 4rem rgba(196,124,16,0.28)";
+
 function fmt(n: number | null | undefined) {
   if (n == null) return "—";
   if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
@@ -25,88 +58,87 @@ function fmt(n: number | null | undefined) {
   return `$${n.toLocaleString()}`;
 }
 
+function initials(name: string | null | undefined) {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
 function ImpactTag({ level }: { level: string | null }) {
-  if (!level) return <span className="text-[#9a9a9a] text-[9px]">—</span>;
-  const map: Record<string, string> = {
-    high:   "text-[#FF4040] border-[#FF4040]/60",
-    medium: "text-[#E05C00] border-[#E05C00]/60",
-    low:    "text-[#00CC44] border-[#00CC44]/60",
-  };
+  if (!level) return <span className="text-[11px]" style={{ color: MUTED }}>—</span>;
+  const map: Record<string, string> = { high: RED, medium: WARNING, low: GREEN };
+  const c = map[level] ?? MUTED;
   return (
-    <span className={`text-[9px] font-bold tracking-wider border px-1.5 py-0.5 ${map[level] ?? "text-[#9a9a9a] border-[#9a9a9a]/40"}`}>
+    <span className="text-[10px] font-bold tracking-wide px-2 py-0.5 rounded-full" style={{ color: c, background: `${c}1a` }}>
       {level.toUpperCase()}
     </span>
   );
 }
 
-function PanelHeader({ label, sub, href }: { label: string; sub?: string; href?: string }) {
+// Circular outlined arrow button — Bloomberg's own CTA motif ("Need customer
+// support? →") rather than a filled pill.
+function ViewAllCircle({ href }: { href: string }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <Link
+      href={href}
+      className="flex items-center justify-center w-8 h-8 rounded-full shrink-0 transition-all duration-200"
+      style={{ border: `1.5px solid ${hover ? GOLD : "rgba(255,255,255,0.35)"}`, background: hover ? "rgba(250,189,73,0.12)" : "transparent" }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title="View all"
+    >
+      <ArrowRight size={14} style={{ color: hover ? GOLD : WHITE }} />
+    </Link>
+  );
+}
+
+function Card({ title, sub, href, children, className = "" }: {
+  title: string; sub?: string; href?: string; children: React.ReactNode; className?: string;
+}) {
+  const [hover, setHover] = useState(false);
   return (
     <div
-      className="flex items-center justify-between px-3 py-1.5"
-      style={{ background: "linear-gradient(to right, #FF8000, #7A2500)" }}
+      className={`rounded-2xl overflow-hidden transition-all duration-300 ${className}`}
+      style={{
+        background: NEAR_BLACK,
+        border: `1px solid ${BORDER}`,
+        boxShadow: hover ? CARD_SHADOW_HOVER : CARD_SHADOW,
+        transform: hover ? "translateY(-3px)" : "none",
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
     >
-      <div className="flex items-center gap-2">
-        <span className="text-white text-[10px] font-bold tracking-[0.18em] uppercase drop-shadow">{label}</span>
-        {sub && <span className="text-white/50 text-[9px] tracking-wider">/ {sub}</span>}
+      <div className="flex items-center justify-between px-5 pt-4 pb-3">
+        <div>
+          <h2 className="text-[13px] font-bold tracking-wide text-white">{title}</h2>
+          {sub && <p className="text-[11px] mt-0.5" style={{ color: MUTED }}>{sub}</p>}
+        </div>
+        {href && <ViewAllCircle href={href} />}
       </div>
-      {href && (
-        <Link href={href} className="flex items-center gap-0.5 text-white/70 text-[9px] hover:text-white tracking-wider transition-colors font-bold">
-          ALL <ChevronRight size={9} />
-        </Link>
-      )}
+      {children}
     </div>
   );
 }
 
-// ── Live value cell with flash animation ──────────────────────────────────────
 interface LiveValue { value: number; changePct: number; flashKey: number }
-
-function LiveValueCell({ live, base }: { live: LiveValue | undefined; base: number | null }) {
-  const display    = live?.value ?? Number(base) ?? 0;
-  const changePct  = live?.changePct ?? 0;
-  const flashClass = live
-    ? changePct >= 0 ? "flash-up" : "flash-down"
-    : "";
-
-  return (
-    <div className="text-right">
-      <span
-        key={live?.flashKey}
-        className={`text-[#f7f7f2] text-[11px] tabular-nums ${flashClass}`}
-      >
-        {fmt(display)}
-      </span>
-      {live && (
-        <p className={`text-[9px] tabular-nums mt-0.5 ${changePct >= 0 ? "text-[#00CC44]" : "text-[#FF4040]"}`}>
-          {changePct >= 0 ? "▲" : "▼"} {Math.abs(changePct).toFixed(3)}%
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ── Event alert toast ─────────────────────────────────────────────────────────
 interface EventAlert { id: number; title: string; impact: string | null }
 
-function EventAlerts({ alerts, onDismiss }: {
-  alerts: EventAlert[];
-  onDismiss: (id: number) => void;
-}) {
+function EventAlerts({ alerts, onDismiss }: { alerts: EventAlert[]; onDismiss: (id: number) => void }) {
   if (!alerts.length) return null;
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       {alerts.map(a => (
-        <div
-          key={a.id}
-          className="alert-in flex items-center justify-between border border-[#E05C00]/40 bg-[#E05C00]/8 px-3 py-2"
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-[#FFA040] text-[9px] font-bold tracking-wider">NEW EVENT</span>
-            <span className="text-[#f7f7f2] text-[10px] truncate max-w-xs">{a.title?.toUpperCase()}</span>
+        <div key={a.id} className="alert-in flex items-center justify-between px-4 py-2.5 rounded-xl" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}`, boxShadow: CARD_SHADOW }}>
+          <div className="flex items-center gap-2.5">
+            <span className="text-[10px] font-bold tracking-wide px-2 py-0.5 rounded-full text-black" style={{ background: GOLD }}>
+              NEW EVENT
+            </span>
+            <span className="text-[12px] truncate max-w-md text-white">{a.title}</span>
             {a.impact && <ImpactTag level={a.impact} />}
           </div>
-          <button onClick={() => onDismiss(a.id)} className="text-[#555] hover:text-[#9a9a9a] ml-3">
-            <X size={10} />
+          <button onClick={() => onDismiss(a.id)} className="ml-3" style={{ color: MUTED }}>
+            <X size={13} />
           </button>
         </div>
       ))}
@@ -114,57 +146,36 @@ function EventAlerts({ alerts, onDismiss }: {
   );
 }
 
-// ── AI alert ticker ───────────────────────────────────────────────────────────
-function AiAlertTicker({ alerts, onDismiss }: {
-  alerts: AlertItem[];
-  onDismiss: (id: number) => void;
-}) {
+function AiAlertTicker({ alerts, onDismiss }: { alerts: AlertItem[]; onDismiss: (id: number) => void }) {
   if (!alerts.length) return null;
-  // Duration scales with total text length (not just item count) so the scroll
-  // speed stays a comfortable, constant reading pace regardless of how much
-  // content is in the loop — ~9 characters/second, floor of 45s per full loop.
   const totalChars = alerts.reduce((sum, a) => sum + a.title.length + a.message.length, 0);
   const duration = Math.max(totalChars / 9, 45);
 
   return (
-    <div className="ticker-wrap flex items-stretch border border-[#2e2e2e] bg-[#0d0d0d] overflow-hidden">
-      <div
-        className="flex items-center gap-1.5 px-3 shrink-0"
-        style={{ background: "linear-gradient(to right, #FF8000, #7A2500)" }}
-      >
-        <Sparkles size={11} className="text-white" />
-        <span className="text-white text-[9px] font-bold tracking-[0.15em] whitespace-nowrap">AI ALERTS</span>
+    <div className="ticker-wrap flex items-stretch overflow-hidden rounded-full" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
+      <div className="flex items-center gap-2 pl-5 pr-4 shrink-0">
+        <Sparkles size={13} style={{ color: GOLD }} />
+        <span className="text-[10px] font-bold tracking-[0.12em] whitespace-nowrap" style={{ color: GOLD }}>AI INSIGHTS</span>
       </div>
       <div className="relative flex-1 overflow-hidden">
-        <div
-          className="ticker-track flex items-center gap-10 py-2 px-4"
-          style={{ animationDuration: `${duration}s` }}
-        >
+        <div className="ticker-track flex items-center gap-10 py-2.5 px-4" style={{ animationDuration: `${duration}s` }}>
           {[...alerts, ...alerts].map((a, i) => (
             <div key={`${a.alert_id}-${i}`} className="flex items-center gap-2 shrink-0">
-              <span className="text-[#FFA040]">●</span>
+              <span style={{ color: GREEN }}>●</span>
               {a.portfolio_id != null ? (
-                <Link
-                  href={`/portfolios/${a.portfolio_id}`}
-                  onClick={() => onDismiss(a.alert_id)}
-                  className="text-[10px] tracking-wide text-[#f7f7f2] hover:text-[#FFA040] transition-colors whitespace-nowrap"
-                >
-                  {a.portfolio_name && <span className="text-[#FFA040]">[{a.portfolio_name}] </span>}
-                  <span className="font-bold">{a.title}</span>
-                  <span className="text-[#9a9a9a]"> — {a.message}</span>
+                <Link href={`/portfolios/${a.portfolio_id}`} onClick={() => onDismiss(a.alert_id)} className="text-[12px] whitespace-nowrap text-white">
+                  {a.portfolio_name && <span style={{ color: GOLD }}>[{a.portfolio_name}] </span>}
+                  <span className="font-semibold">{a.title}</span>
+                  <span style={{ color: MUTED }}> — {a.message}</span>
                 </Link>
               ) : (
-                <span className="text-[10px] tracking-wide text-[#f7f7f2] whitespace-nowrap">
-                  <span className="font-bold">{a.title}</span>
-                  <span className="text-[#9a9a9a]"> — {a.message}</span>
+                <span className="text-[12px] whitespace-nowrap text-white">
+                  <span className="font-semibold">{a.title}</span>
+                  <span style={{ color: MUTED }}> — {a.message}</span>
                 </span>
               )}
-              <button
-                onClick={() => onDismiss(a.alert_id)}
-                className="text-[#9a9a9a] hover:text-[#f7f7f2] shrink-0"
-                title="Mark as read"
-              >
-                <X size={10} />
+              <button onClick={() => onDismiss(a.alert_id)} className="shrink-0" style={{ color: MUTED }} title="Mark as read">
+                <X size={12} />
               </button>
             </div>
           ))}
@@ -174,12 +185,22 @@ function AiAlertTicker({ alerts, onDismiss }: {
   );
 }
 
-// ── Main dashboard ────────────────────────────────────────────────────────────
+function ChartTooltip({ active, payload }: { active?: boolean; payload?: { name: string; value: number; payload: { pct: string } }[] }) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0];
+  return (
+    <div className="rounded-lg px-3 py-2 text-[11px]" style={{ background: CHART_SURFACE, border: `1px solid ${BORDER}`, color: WHITE, boxShadow: CARD_SHADOW_HOVER }}>
+      <p className="font-semibold">{p.name}</p>
+      <p style={{ color: MUTED }}>{p.value} portfolio{p.value === 1 ? "" : "s"} · {p.payload.pct}%</p>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
-  const [events, setEvents]         = useState<MarketEvent[]>([]);
   const [loading, setLoading]       = useState(true);
   const [now, setNow]               = useState(new Date());
+  const [securitiesCount, setSecuritiesCount] = useState(0);
 
   const [liveValues, setLiveValues]   = useState<Record<number, LiveValue>>({});
   const [eventAlerts, setEventAlerts] = useState<EventAlert[]>([]);
@@ -188,37 +209,14 @@ export default function Dashboard() {
 
   const handleDismissAiAlert = (alertId: number) => {
     setAiAlerts(prev => prev.filter(a => a.alert_id !== alertId));
-    markAlertRead(alertId).catch(() => {}); // best-effort — ticker already updated optimistically
+    markAlertRead(alertId).catch(() => {});
   };
-
-  // Apply gradient background + sidebar glass effect only on the dashboard page
-  useEffect(() => {
-    document.body.style.background = "transparent";
-    const aside = document.querySelector("aside") as HTMLElement | null;
-    if (aside) {
-      aside.style.background = "rgba(6, 2, 0, 0.80)";
-      aside.style.backdropFilter = "blur(18px)";
-      aside.style.borderRight = "1px solid rgba(255,120,0,0.22)";
-    }
-    return () => {
-      document.body.style.background = "";
-      if (aside) {
-        aside.style.background = "";
-        aside.style.backdropFilter = "";
-        aside.style.borderRight = "";
-      }
-    };
-  }, []);
 
   const { connected } = useWebSocket((msg: WsMessage) => {
     if (msg.type === "portfolio_update" && msg.portfolio_id != null) {
       setLiveValues(prev => ({
         ...prev,
-        [msg.portfolio_id!]: {
-          value:      msg.total_value!,
-          changePct:  msg.change_pct!,
-          flashKey:   Date.now(),
-        },
+        [msg.portfolio_id!]: { value: msg.total_value!, changePct: msg.change_pct!, flashKey: Date.now() },
       }));
     }
     if (msg.type === "market_event" && msg.data) {
@@ -232,10 +230,9 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    Promise.all([getPortfolios(), getMarketEvents(10)])
-      .then(([p, e]) => { setPortfolios(p); setEvents(e); })
+    getPortfolios()
+      .then(setPortfolios)
       .finally(() => setLoading(false));
-
     const tick = setInterval(() => setNow(new Date()), 1_000);
     return () => clearInterval(tick);
   }, []);
@@ -251,249 +248,239 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    const fetchSecuritiesCount = () => {
+      getSecuritiesCount()
+        .then(r => setSecuritiesCount(r.distinct_securities))
+        .catch(() => {});
+    };
+    fetchSecuritiesCount();
+    const id = setInterval(fetchSecuritiesCount, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const baseAUM = portfolios.reduce((sum, p) => sum + (Number(p.total_value) || 0), 0);
   const totalAUM = portfolios.reduce((sum, p) => {
     const live = liveValues[p.portfolio_id];
     return sum + (live ? live.value : Number(p.total_value) || 0);
   }, 0);
+  const sessionChangePct = baseAUM ? ((totalAUM - baseAUM) / baseAUM) * 100 : 0;
 
-  // sort strategies by count desc so rank 0 = most popular = brightest orange
   const strategyCounts = portfolios.reduce<Record<string, number>>((acc, p) => {
     if (p.strategy_type) acc[p.strategy_type] = (acc[p.strategy_type] ?? 0) + 1;
     return acc;
   }, {});
-  const strategies = Object.entries(strategyCounts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([s]) => s);
+  const strategies = Object.entries(strategyCounts).sort((a, b) => b[1] - a[1]).map(([s]) => s);
 
-  if (loading) return <LoadingSpinner label="Initialising terminal..." />;
+  const pieData = useMemo(() => {
+    const TOP_N = 8;
+    const top = strategies.slice(0, TOP_N).map((s, i) => ({
+      name: s,
+      value: strategyCounts[s] ?? 0,
+      pct: portfolios.length ? (((strategyCounts[s] ?? 0) / portfolios.length) * 100).toFixed(1) : "0.0",
+      color: goldByRank(i, Math.min(strategies.length, TOP_N)),
+    }));
+    const otherCount = strategies.slice(TOP_N).reduce((s, name) => s + (strategyCounts[name] ?? 0), 0);
+    if (otherCount > 0) {
+      top.push({ name: "OTHER", value: otherCount, pct: ((otherCount / portfolios.length) * 100).toFixed(1), color: OTHER_GRAY });
+    }
+    return top;
+  }, [strategies, strategyCounts, portfolios.length]);
 
-  const dateStr = now.toLocaleDateString("en-US", {
-    weekday: "short", year: "numeric", month: "short", day: "numeric",
-  }).toUpperCase();
-  const timeStr = now.toLocaleTimeString("en-US", { hour12: false });
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${manrope.className}`}>
+        <div className="flex items-center gap-3 text-[12px] tracking-wide text-white">
+          <span className="w-3.5 h-3.5 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(250,189,73,0.25)", borderTopColor: GOLD }} />
+          Loading your portfolios…
+        </div>
+      </div>
+    );
+  }
+
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   return (
-    <>
-      {/* ── Layer 1: Full-viewport diverging gradient (fixed, behind everything) ── */}
-      <div
-        className="fixed inset-0"
-        style={{
-          zIndex: 1,
-          background:
-            "radial-gradient(ellipse at top left, #FFA040 0%, #FF8000 22%, #CC4400 45%, #7A2500 65%, #3D1000 82%, #050000 100%)",
-        }}
-      />
+    <div className={manrope.className}>
+      <div className="relative max-w-7xl mx-auto space-y-4">
 
-      {/* ── Layer 2: Black canvas — sits within main's p-5 gap (that gap = visible orange frame) ── */}
-      <div
-        className="relative bg-black"
-        style={{ zIndex: 2, minHeight: "calc(100vh - 40px)" }}
-      >
-        <div className="max-w-7xl mx-auto space-y-3 font-mono p-5">
-
-      {/* ── Top terminal bar ─────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between border border-[#2e2e2e] bg-[#0d0d0d] px-4 py-2">
-        <div className="flex items-center gap-3">
-          <span className="text-[11px] font-bold tracking-[0.2em]" style={{ color: "#FF8000" }}>FINSIGHT AI</span>
-          <span className="text-[#3A3A3A]">│</span>
-          <span className="text-[#9a9a9a] text-[9px] tracking-[0.12em]">PORTFOLIO INTELLIGENCE TERMINAL</span>
-          <span className="text-[#3A3A3A]">│</span>
-          <span className="text-[#9a9a9a] text-[9px] tracking-wider">v2.0</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-[#9a9a9a] text-[10px] tabular-nums tracking-wider">{dateStr}</span>
-          <span className="text-[#f7f7f2] text-[10px] tabular-nums font-bold tracking-wider">{timeStr}</span>
-          <span className="text-[#3A3A3A]">│</span>
-          <div className="flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-[#00CC44] animate-pulse" : "bg-[#E05C00]"}`} />
-            <span className={`text-[9px] font-bold tracking-[0.15em] ${connected ? "text-[#00CC44]" : "text-[#E05C00]"}`}>
-              {connected ? "LIVE" : "RECONNECTING"}
-            </span>
+        {/* ── Header ────────────────────────────────────────────────────────── */}
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div className="max-w-xl">
+            <h1 className="text-[26px] sm:text-[28px] font-extrabold leading-tight tracking-tight">
+              <span className="text-white">Real-Time Portfolio </span>
+              <span style={{ color: GOLD }}>Intelligence</span>
+            </h1>
+            <p className="text-[16px] mt-2 leading-relaxed" style={{ color: MUTED }}>
+              Monitor risk, track performance, and act on AI-driven insights — all in real time,
+              built for professional fund managers.
+            </p>
           </div>
-        </div>
-      </div>
-
-      {/* ── AI alert ticker ──────────────────────────────────────────────── */}
-      <AiAlertTicker alerts={aiAlerts} onDismiss={handleDismissAiAlert} />
-
-      {/* ── Event alert toasts ───────────────────────────────────────────── */}
-      <EventAlerts
-        alerts={eventAlerts}
-        onDismiss={id => setEventAlerts(prev => prev.filter(a => a.id !== id))}
-      />
-
-      {/* ── KPI strip ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-4 border border-[#2e2e2e]">
-        {[
-          { label: "TOTAL AUM",     value: fmt(totalAUM),                          sub: `${portfolios.length} PORTFOLIOS`,                          valueColor: "#00CC44" },
-          { label: "STRATEGIES",    value: strategies.length,                       sub: strategies.slice(0, 2).join(" · ").toUpperCase() || "—",   valueColor: "#00CC44" },
-          { label: "MARKET EVENTS", value: events.length,                           sub: "LAST 10 ALERTS",                                           valueColor: "#00CC44" },
-          { label: "SYSTEM STATUS", value: connected ? "ONLINE" : "PARTIAL",       sub: "API · RAG · GPT-4o",                                       valueColor: connected ? "#00CC44" : "#E05C00" },
-        ].map((kpi, i) => (
-          <div key={i} className={`p-4 bg-[#0d0d0d] ${i < 3 ? "border-r border-[#2e2e2e]" : ""}`}>
-            <p className="text-[9px] font-bold tracking-[0.15em] mb-2" style={{ color: "#FF8000" }}>{kpi.label}</p>
-            <p className="text-2xl font-bold tabular-nums" style={{ color: kpi.valueColor }}>{kpi.value}</p>
-            <p className="text-[#9a9a9a] text-[10px] mt-1 tracking-wider">{kpi.sub}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Main panels ──────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3">
-
-        {/* Portfolios */}
-        <div className="border border-[#2e2e2e]">
-          <PanelHeader label="PORTFOLIOS" sub={`${portfolios.length} ACTIVE`} href="/portfolios" />
-          <div className="grid px-3 py-1.5 bg-[#0d0d0d] border-b border-[#2e2e2e]"
-               style={{ gridTemplateColumns: "36px 1fr 110px 50px" }}>
-            {["ID", "NAME / STRATEGY", "VALUE", "Δ%"].map(h => (
-              <span key={h} className="text-[9px] font-bold tracking-[0.12em] last:text-right" style={{ color: "#FF8000" }}>{h}</span>
-            ))}
-          </div>
-
-          {portfolios.slice(0, 10).map(p => {
-            const live = liveValues[p.portfolio_id];
-            return (
-              <Link
-                key={p.portfolio_id}
-                href={`/portfolios/${p.portfolio_id}`}
-                className="grid px-3 py-2 border-b border-[#161616] hover:bg-[#1a0a00] transition-colors group"
-                style={{ gridTemplateColumns: "36px 1fr 110px 50px" }}
-              >
-                <span className="text-[#9a9a9a] text-[9px] tabular-nums self-center">
-                  {String(p.portfolio_id).padStart(3, "0")}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[#f7f7f2] text-[11px] transition-colors truncate leading-tight group-hover:text-[#FFA040]">
-                    {p.portfolio_name?.toUpperCase()}
-                  </p>
-                  <p className="text-[#9a9a9a] text-[9px] tracking-wider truncate">
-                    {p.strategy_type?.toUpperCase() ?? "—"}
-                  </p>
-                </div>
-                <span
-                  key={live?.flashKey}
-                  className={`text-[11px] tabular-nums self-center ${
-                    live
-                      ? live.changePct >= 0 ? "flash-up text-[#00CC44]" : "flash-down text-[#FF4040]"
-                      : "text-[#f7f7f2]"
-                  }`}
-                >
-                  {fmt(live?.value ?? Number(p.total_value))}
-                </span>
-                <span className={`text-[9px] tabular-nums self-center text-right ${
-                  live
-                    ? live.changePct >= 0 ? "text-[#00CC44]" : "text-[#FF4040]"
-                    : "text-[#9a9a9a]"
-                }`}>
-                  {live
-                    ? `${live.changePct >= 0 ? "▲" : "▼"} ${Math.abs(live.changePct).toFixed(2)}%`
-                    : "—"}
-                </span>
-              </Link>
-            );
-          })}
-
-          <div className="px-3 py-2 bg-[#0d0d0d] border-t border-[#2e2e2e] flex justify-end">
-            <Link href="/portfolios" className="text-[9px] tracking-wider flex items-center gap-1 transition-colors opacity-70 hover:opacity-100"
-                  style={{ color: "#CC4400" }}
-                  onMouseEnter={e => (e.currentTarget.style.color = "#FFA040")}
-                  onMouseLeave={e => (e.currentTarget.style.color = "#CC4400")}>
-              VIEW ALL {portfolios.length} PORTFOLIOS <ArrowRight size={9} />
-            </Link>
-          </div>
-        </div>
-
-        {/* Market Events */}
-        <div className="border border-[#2e2e2e]">
-          <PanelHeader label="MARKET EVENTS" sub="RECENT ALERTS" href="/market-events" />
-          <div className="grid px-3 py-1.5 bg-[#0d0d0d] border-b border-[#2e2e2e]"
-               style={{ gridTemplateColumns: "76px 1fr 60px" }}>
-            {["DATE", "EVENT / TYPE", "IMPACT"].map(h => (
-              <span key={h} className="text-[9px] font-bold tracking-[0.12em]" style={{ color: "#FF8000" }}>{h}</span>
-            ))}
-          </div>
-
-          {events.slice(0, 10).map(ev => (
-            <Link
-              key={ev.event_id}
-              href={`/market-events/${ev.event_id}`}
-              className="grid px-3 py-2 border-b border-[#161616] hover:bg-[#1a0a00] transition-colors group items-start"
-              style={{ gridTemplateColumns: "76px 1fr 60px" }}
-            >
-              <span className="text-[#9a9a9a] text-[9px] tabular-nums pt-0.5">
-                {ev.event_date?.slice(0, 10) ?? "—"}
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: connected ? GREEN : WARNING }} />
+              <span className="text-[11px] font-semibold" style={{ color: connected ? GREEN : WARNING }}>
+                {connected ? "Live" : "Reconnecting"}
               </span>
-              <div className="min-w-0">
-                <p className="text-[#f7f7f2] text-[11px] transition-colors truncate leading-tight group-hover:text-[#FFA040]">
-                  {ev.event_title?.toUpperCase() ?? "UNTITLED"}
-                </p>
-                <p className="text-[#9a9a9a] text-[9px] tracking-wider truncate">
-                  {ev.event_type?.toUpperCase() ?? "—"}
-                </p>
-              </div>
-              <div className="pt-0.5">
-                <ImpactTag level={ev.impact_level} />
-              </div>
-            </Link>
-          ))}
-
-          <div className="px-3 py-2 bg-[#0d0d0d] border-t border-[#2e2e2e] flex justify-end">
-            <Link href="/market-events" className="text-[9px] tracking-wider flex items-center gap-1 transition-colors opacity-70 hover:opacity-100"
-                  style={{ color: "#CC4400" }}
-                  onMouseEnter={e => (e.currentTarget.style.color = "#FFA040")}
-                  onMouseLeave={e => (e.currentTarget.style.color = "#CC4400")}>
-              VIEW ALL EVENTS <ArrowRight size={9} />
-            </Link>
+            </div>
+            <p className="text-[11px]" style={{ color: MUTED }}>{dateStr} · {timeStr}</p>
           </div>
         </div>
-      </div>
 
-      {/* ── Strategy distribution ─────────────────────────────────────────── */}
-      <div className="border border-[#2e2e2e]">
-        <PanelHeader label="STRATEGY DISTRIBUTION" sub={`${strategies.length} ACTIVE`} />
-        <div className="flex divide-x divide-[#2e2e2e] bg-[#0d0d0d]">
-          {strategies.slice(0, 8).map((s, idx) => {
-            const count = strategyCounts[s] ?? 0;
-            const pct   = portfolios.length ? ((count / portfolios.length) * 100).toFixed(1) : "0.0";
-            const barColor = orangeByRank(idx, Math.min(strategies.length, 8));
-            return (
-              <div key={s} className="flex-1 px-3 py-2.5 min-w-0">
-                <p className="text-[8px] font-bold tracking-wider truncate uppercase" style={{ color: "#FFA040" }}>{s}</p>
-                <p className="text-base font-bold tabular-nums mt-0.5" style={{ color: "#00CC44" }}>{count}</p>
-                <div className="mt-1.5 h-1 bg-[#1a0a00] rounded-none">
-                  <div className="h-full" style={{ width: `${pct}%`, backgroundColor: "#FFA040", opacity: 0.85 }} />
-                </div>
-                <p className="text-[#9a9a9a] text-[8px] mt-1 tabular-nums">{pct}%</p>
-              </div>
-            );
-          })}
+        {/* ── AI insights ticker ───────────────────────────────────────────── */}
+        <AiAlertTicker alerts={aiAlerts} onDismiss={handleDismissAiAlert} />
+
+        {/* ── Event alert toasts ───────────────────────────────────────────── */}
+        <EventAlerts alerts={eventAlerts} onDismiss={id => setEventAlerts(prev => prev.filter(a => a.id !== id))} />
+
+        {/* ── KPI row ──────────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[
+            { label: "Total AUM", icon: Wallet, value: fmt(totalAUM), delta: `${sessionChangePct >= 0 ? "+" : ""}${sessionChangePct.toFixed(2)}% today`, deltaGood: sessionChangePct >= 0 },
+            { label: "Active Portfolios", icon: LayoutGrid, value: String(portfolios.length), delta: `${strategies.length} strategies`, neutral: true },
+            { label: "Securities Held", icon: Layers, value: String(securitiesCount), delta: `across ${portfolios.length} portfolios`, neutral: true },
+          ].map((kpi, i) => (
+            <KpiTile key={i} {...kpi} />
+          ))}
         </div>
-      </div>
 
-      {/* ── System status strip ──────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 border border-[#2e2e2e] border-t-0 px-3 py-1.5 bg-[#0d0d0d] text-[9px] tracking-wider">
-        <span className="font-bold opacity-90" style={{ color: "#FF8000" }}>SYS</span>
-        <span className="text-[#3A3A3A]">│</span>
-        <span className="text-[#9a9a9a]">API {(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/^https?:\/\//, "")}</span>
-        <span className="text-[#3A3A3A]">│</span>
-        <span className="text-[#9a9a9a]">WS {connected ? "CONNECTED" : "RECONNECTING"}</span>
-        <span className="text-[#3A3A3A]">│</span>
-        <span className="text-[#9a9a9a]">DB SQL-SERVER</span>
-        <span className="text-[#3A3A3A]">│</span>
-        <span className="text-[#9a9a9a]">RAG CHROMADB</span>
-        <span className="text-[#3A3A3A]">│</span>
-        <span className="text-[#9a9a9a]">AI GPT-4o</span>
-        <div className="ml-auto flex items-center gap-1.5">
-          <span className={`w-1 h-1 rounded-full ${connected ? "bg-[#00CC44] animate-pulse" : "bg-[#E05C00]"}`} />
-          <span className={`text-[9px] font-bold tracking-wider ${connected ? "text-[#00CC44]" : "text-[#E05C00]"}`}>
-            {connected ? "ALL SYSTEMS OPERATIONAL" : "PARTIAL — WS RECONNECTING"}
+        {/* ── Main grid ────────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-2">
+            <Card title="Top Portfolios" sub={`${portfolios.length} active`} href="/portfolios">
+              <div className="px-2 pb-2">
+                {portfolios.slice(0, 8).map(p => {
+                  const live = liveValues[p.portfolio_id];
+                  const value = live?.value ?? (Number(p.total_value) || 0);
+                  const changePct = live?.changePct ?? 0;
+                  const flashClass = live ? (changePct >= 0 ? "flash-up" : "flash-down") : "";
+                  return (
+                    <PortfolioRow key={p.portfolio_id} p={p} value={value} changePct={changePct} live={!!live} flashClass={flashClass} flashKey={live?.flashKey} />
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+
+          <Card title="Allocation" sub="by strategy">
+            <div className="px-5 pb-5">
+              <div className="relative h-[180px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData} dataKey="value" nameKey="name"
+                      innerRadius={55} outerRadius={78}
+                      paddingAngle={pieData.length > 1 ? 2 : 0}
+                      stroke={NEAR_BLACK} strokeWidth={2}
+                    >
+                      {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <p className="text-[22px] font-extrabold text-white">{portfolios.length}</p>
+                  <p className="text-[10px] tracking-wide" style={{ color: MUTED }}>PORTFOLIOS</p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-1.5">
+                {pieData.slice(0, 6).map(d => (
+                  <div key={d.name} className="flex items-center gap-2 text-[11px]">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />
+                    <span className="truncate flex-1 text-white">{d.name}</span>
+                    <span className="tabular-nums" style={{ color: MUTED }}>{d.pct}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* ── Footer status ────────────────────────────────────────────────── */}
+        <div className="flex items-center gap-4 flex-wrap px-1 py-3 text-[11px]" style={{ color: MUTED }}>
+          <span className="flex items-center">
+            <TrendingUp size={12} style={{ color: GOLD }} />
+          </span>
+          <span>·</span>
+          <span>API {(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/^https?:\/\//, "")}</span>
+          <span>·</span>
+          <span>ChromaDB RAG</span>
+          <span>·</span>
+          <span>GPT-4o</span>
+          <span className="ml-auto flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: connected ? GREEN : WARNING }} />
+            {connected ? "All systems operational" : "Reconnecting to live feed"}
           </span>
         </div>
-      </div>
 
-        </div>{/* end max-w-7xl */}
-      </div>{/* end Layer 2: black canvas */}
-    </>
+      </div>
+    </div>
+  );
+}
+
+// ── KPI tile — near-black card, gold icon chip, amber glow intensifying on hover ──
+function KpiTile({ label, icon: Icon, value, delta, deltaGood, neutral }: {
+  label: string; icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+  value: string; delta: string; deltaGood?: boolean; neutral?: boolean;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      className="p-5 rounded-2xl transition-all duration-300"
+      style={{
+        background: NEAR_BLACK, border: `1px solid ${BORDER}`,
+        boxShadow: hover ? CARD_SHADOW_HOVER : CARD_SHADOW,
+        transform: hover ? "translateY(-4px)" : "none",
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[11px] font-semibold tracking-wide" style={{ color: MUTED }}>{label}</span>
+        <div className="p-1.5 rounded-lg" style={{ background: "rgba(250,189,73,0.12)" }}>
+          <Icon size={13} style={{ color: GOLD }} />
+        </div>
+      </div>
+      <p className="text-[26px] font-extrabold tabular-nums leading-none text-white">{value}</p>
+      <p className="text-[11px] mt-2 flex items-center gap-1" style={{ color: neutral ? MUTED : deltaGood ? GREEN : RED }}>
+        {!neutral && (deltaGood ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />)}
+        {delta}
+      </p>
+    </div>
+  );
+}
+
+// ── Portfolio row — gold-tinted hover wash + gold hover text ("hover = selection") ──
+function PortfolioRow({ p, value, changePct, live, flashClass, flashKey }: {
+  p: Portfolio; value: number; changePct: number; live: boolean; flashClass: string; flashKey?: number;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <Link
+      href={`/portfolios/${p.portfolio_id}`}
+      className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors"
+      style={{ background: hover ? "rgba(250,189,73,0.07)" : "transparent" }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0" style={{ background: "rgba(250,189,73,0.12)", color: GOLD }}>
+        {initials(p.portfolio_name)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-semibold truncate transition-colors" style={{ color: hover ? GOLD : WHITE }}>
+          {p.portfolio_name}
+        </p>
+        <p className="text-[11px] truncate" style={{ color: MUTED }}>{p.strategy_type ?? "Unclassified"}</p>
+      </div>
+      <div className="text-right shrink-0">
+        <p key={flashKey} className={`text-[13px] font-bold tabular-nums text-white ${flashClass}`}>
+          {fmt(value)}
+        </p>
+        <p className="text-[11px] tabular-nums flex items-center justify-end gap-0.5" style={{ color: live ? (changePct >= 0 ? GREEN : RED) : MUTED }}>
+          {live ? (<>{changePct >= 0 ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}{Math.abs(changePct).toFixed(2)}%</>) : "—"}
+        </p>
+      </div>
+    </Link>
   );
 }

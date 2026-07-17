@@ -8,8 +8,6 @@ import {
   PortfolioDetail, Position, Performance, RiskMetrics, RiskHistoryPoint, AlertItem,
 } from "@/lib/api";
 import { useWebSocket, WsMessage } from "@/hooks/useWebSocket";
-import StatCard from "@/components/StatCard";
-import SectionHeader from "@/components/SectionHeader";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
@@ -17,27 +15,25 @@ import {
   BarChart, Bar,
 } from "recharts";
 import { Sparkles, Wifi, WifiOff, RefreshCw, Bell, CheckCheck, X, FileDown } from "lucide-react";
-
-const COLORS = ["#F5821F","#00CC44","#FFB300","#3b82f6","#FF4040","#a78bfa","#38bdf8","#e879f9"];
-
-function fmt(n: number | null | undefined) {
-  if (n == null) return "—";
-  if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-  return `$${Number(n).toLocaleString()}`;
-}
-
-// ytd_return (and volatility, above) come from Portfolio_Performance as a
-// fraction (0.1340 = 13.40%), unlike the WebSocket's live change_pct which
-// arrives already percentage-scaled — hence the explicit *100 here but not there.
-function pct(n: number | null | undefined) {
-  if (n == null) return "—";
-  const v = Number(n) * 100;
-  return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
-}
+import {
+  manrope, GOLD, AMBER_DARK, WHITE, MUTED, GREEN, RED, WARNING,
+  NEAR_BLACK, CHART_SURFACE, BORDER, GOLD_SCALE, fmt, pct,
+} from "@/lib/theme";
 
 function varColor(v: number) {
-  return v < -2 ? "text-[#FF4040]" : v < -1 ? "text-[#FFB300]" : "text-[#00CC44]";
+  return v < -2 ? RED : v < -1 ? WARNING : GREEN;
+}
+
+const chartTick = { fill: MUTED, fontSize: 9 };
+const chartTooltipStyle = { background: CHART_SURFACE, border: `1px solid ${BORDER}`, fontSize: 10, borderRadius: 8 };
+
+// ── Gold gradient card header bar (matches the rest of the site) ────────────
+function CardHeader({ title }: { title: string }) {
+  return (
+    <div className="px-4 py-2.5" style={{ background: `linear-gradient(to right, ${GOLD}, ${AMBER_DARK})` }}>
+      <span className="text-black text-[11px] font-bold tracking-wide uppercase">{title}</span>
+    </div>
+  );
 }
 
 type Tab = "overview" | "positions" | "risk";
@@ -145,7 +141,7 @@ export default function PortfolioPage() {
   };
 
   if (loading) return <LoadingSpinner label="Loading portfolio..." />;
-  if (!portfolio) return <p className="text-[#FF4040] text-sm font-mono">Portfolio not found.</p>;
+  if (!portfolio) return <p className={`text-sm ${manrope.className}`} style={{ color: RED }}>Portfolio not found.</p>;
 
   const sectorMap: Record<string, number> = {};
   positions.forEach(p => {
@@ -165,35 +161,33 @@ export default function PortfolioPage() {
     ? liveChangePct >= 0 ? "flash-up" : "flash-down"
     : "";
 
-  const TAB_STYLE = (t: Tab) =>
-    `px-4 py-2 text-[10px] font-bold tracking-[0.15em] border-b-2 transition-colors cursor-pointer ${
-      activeTab === t
-        ? "border-[#F5821F] text-[#F5821F]"
-        : "border-transparent text-[#888] hover:text-[#CCC]"
-    }`;
+  const tabStyle = (t: Tab) => ({
+    color: activeTab === t ? GOLD : MUTED,
+    borderBottomColor: activeTab === t ? GOLD : "transparent",
+  });
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 font-mono">
+    <div className={`max-w-7xl mx-auto space-y-6 ${manrope.className}`}>
 
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="border-b border-[#2A2A2A] pb-4 flex items-start justify-between">
+      <div className="pb-4 flex items-start justify-between" style={{ borderBottom: `1px solid ${BORDER}` }}>
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-[#E0E0E0] text-lg font-bold tracking-wider">
-              {portfolio.portfolio_name?.toUpperCase()}
+            <h1 className="text-[19px] font-bold" style={{ color: WHITE }}>
+              {portfolio.portfolio_name}
             </h1>
             <div className="flex items-center gap-1.5">
               {connected
-                ? <Wifi size={11} className="text-[#00CC44]" />
-                : <WifiOff size={11} className="text-[#FFB300]" />}
-              <span className={`text-[9px] font-bold tracking-wider ${connected ? "text-[#00CC44]" : "text-[#FFB300]"}`}>
+                ? <Wifi size={12} style={{ color: GREEN }} />
+                : <WifiOff size={12} style={{ color: WARNING }} />}
+              <span className="text-[10px] font-bold tracking-wide" style={{ color: connected ? GREEN : WARNING }}>
                 {connected ? "LIVE" : "OFFLINE"}
               </span>
             </div>
           </div>
-          <p className="text-[#888] text-[10px] mt-0.5 tracking-wider">
-            {portfolio.strategy_type?.toUpperCase()} · {portfolio.currency}
-            · {portfolio.positions_count} POSITIONS
+          <p className="text-[11px] mt-0.5 tracking-wide" style={{ color: MUTED }}>
+            {portfolio.strategy_type} · {portfolio.currency}
+            · {portfolio.positions_count} positions
             {portfolio.customer && ` · ${portfolio.customer.customer_name}`}
           </p>
         </div>
@@ -201,126 +195,126 @@ export default function PortfolioPage() {
           <button
             onClick={handleDownloadReport}
             disabled={reportDownloading}
-            className="flex items-center gap-2 px-3 py-2 bg-[#F5821F]/10 border border-[#F5821F]/30 text-[#F5821F] text-[10px] hover:bg-[#F5821F]/20 transition-colors tracking-wider disabled:opacity-50"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[11px] tracking-wide transition-colors disabled:opacity-50"
+            style={{ background: "rgba(250,189,73,0.10)", border: `1px solid ${BORDER}`, color: GOLD }}
           >
-            <FileDown size={12} /> {reportDownloading ? "GENERATING…" : "EXPORT REPORT"}
+            <FileDown size={12} /> {reportDownloading ? "Generating…" : "Export report"}
           </button>
           <Link
             href={`/ai-insights?portfolio=${pid}`}
-            className="flex items-center gap-2 px-3 py-2 bg-[#F5821F]/10 border border-[#F5821F]/30 text-[#F5821F] text-[10px] hover:bg-[#F5821F]/20 transition-colors tracking-wider"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[11px] tracking-wide transition-colors"
+            style={{ background: "rgba(250,189,73,0.10)", border: `1px solid ${BORDER}`, color: GOLD }}
           >
-            <Sparkles size={12} /> AI INSIGHTS
+            <Sparkles size={12} /> AI Insights
           </Link>
         </div>
       </div>
 
       {/* ── Stat cards ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-0 border border-[#2A2A2A]">
-        <div className="p-4 bg-[#0D0D0D] border-r border-[#2A2A2A]">
-          <p className="text-[#F5821F] text-[9px] font-bold tracking-[0.15em] mb-2">TOTAL VALUE</p>
-          <p key={flashKey} className={`text-2xl font-bold tabular-nums ${flashClass} text-[#F5821F]`}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="p-4 rounded-2xl" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
+          <p className="text-[10px] font-bold tracking-wide mb-2" style={{ color: GOLD }}>TOTAL VALUE</p>
+          <p key={flashKey} className={`text-2xl font-extrabold tabular-nums ${flashClass}`} style={{ color: WHITE }}>
             {fmt(displayValue)}
           </p>
           {liveChangePct != null && (
-            <p className={`text-[10px] mt-1 tabular-nums font-bold ${liveChangePct >= 0 ? "text-[#00CC44]" : "text-[#FF4040]"}`}>
-              {liveChangePct >= 0 ? "▲" : "▼"} {Math.abs(liveChangePct).toFixed(3)}% LIVE
+            <p className="text-[10px] mt-1 tabular-nums font-bold" style={{ color: liveChangePct >= 0 ? GREEN : RED }}>
+              {liveChangePct >= 0 ? "▲" : "▼"} {Math.abs(liveChangePct).toFixed(3)}% live
             </p>
           )}
         </div>
-        <div className="p-4 bg-[#0D0D0D] border-r border-[#2A2A2A]">
-          <p className="text-[#F5821F] text-[9px] font-bold tracking-[0.15em] mb-2">YTD RETURN</p>
-          <p className={`text-2xl font-bold tabular-nums ${(latest?.ytd_return ?? 0) > 0 ? "text-[#00CC44]" : (latest?.ytd_return ?? 0) < 0 ? "text-[#FF4040]" : "text-[#E0E0E0]"}`}>
+        <div className="p-4 rounded-2xl" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
+          <p className="text-[10px] font-bold tracking-wide mb-2" style={{ color: GOLD }}>YTD RETURN</p>
+          <p className="text-2xl font-extrabold tabular-nums" style={{ color: (latest?.ytd_return ?? 0) > 0 ? GREEN : (latest?.ytd_return ?? 0) < 0 ? RED : WHITE }}>
             {pct(latest?.ytd_return)}
           </p>
         </div>
-        <div className="p-4 bg-[#0D0D0D] border-r border-[#2A2A2A]">
-          <p className="text-[#F5821F] text-[9px] font-bold tracking-[0.15em] mb-2">SHARPE RATIO</p>
-          <p className="text-2xl font-bold tabular-nums text-[#E0E0E0]">
+        <div className="p-4 rounded-2xl" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
+          <p className="text-[10px] font-bold tracking-wide mb-2" style={{ color: GOLD }}>SHARPE RATIO</p>
+          <p className="text-2xl font-extrabold tabular-nums" style={{ color: WHITE }}>
             {latest?.sharpe_ratio != null ? Number(latest.sharpe_ratio).toFixed(2) : "—"}
           </p>
         </div>
-        <div className="p-4 bg-[#0D0D0D]">
-          <p className="text-[#F5821F] text-[9px] font-bold tracking-[0.15em] mb-2">VOLATILITY</p>
-          <p className="text-2xl font-bold tabular-nums text-[#FFB300]">
+        <div className="p-4 rounded-2xl" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
+          <p className="text-[10px] font-bold tracking-wide mb-2" style={{ color: GOLD }}>VOLATILITY</p>
+          <p className="text-2xl font-extrabold tabular-nums" style={{ color: WARNING }}>
             {latest?.volatility != null ? `${(Number(latest.volatility) * 100).toFixed(1)}%` : "—"}
           </p>
         </div>
       </div>
 
       {/* ── Tab bar ──────────────────────────────────────────────────────── */}
-      <div className="border-b border-[#2A2A2A] flex gap-0">
-        <button className={TAB_STYLE("overview")}  onClick={() => setActiveTab("overview")}>OVERVIEW</button>
-        <button className={TAB_STYLE("positions")} onClick={() => setActiveTab("positions")}>POSITIONS</button>
-        <button className={TAB_STYLE("risk")}      onClick={() => setActiveTab("risk")}>RISK ANALYTICS</button>
+      <div className="flex gap-0" style={{ borderBottom: `1px solid ${BORDER}` }}>
+        {(["overview", "positions", "risk"] as Tab[]).map(t => (
+          <button
+            key={t}
+            className="px-4 py-2.5 text-[11px] font-bold tracking-wide border-b-2 transition-colors cursor-pointer capitalize"
+            style={tabStyle(t)}
+            onClick={() => setActiveTab(t)}
+          >
+            {t === "risk" ? "Risk Analytics" : t}
+          </button>
+        ))}
       </div>
 
       {/* ── OVERVIEW TAB ─────────────────────────────────────────────────── */}
       {activeTab === "overview" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="bg-[#0D0D0D] border border-[#2A2A2A] p-4">
-            <div className="bg-[#F5821F] px-3 py-1.5 -mx-4 -mt-4 mb-4">
-              <span className="text-black text-[10px] font-bold tracking-[0.15em]">SECTOR ALLOCATION</span>
-            </div>
-            <ResponsiveContainer width="100%" height={160}>
-              <PieChart>
-                <Pie data={sectorData} cx="50%" cy="50%" innerRadius={45} outerRadius={72}
-                  dataKey="value" paddingAngle={2}>
-                  {sectorData.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{ background: "#0D0D0D", border: "1px solid #2A2A2A", fontSize: 10, fontFamily: "monospace" }}
-                  formatter={(v: unknown) => [`${v}%`, ""]}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="space-y-1 mt-2">
-              {sectorData.slice(0, 6).map((s, i) => (
-                <div key={s.name} className="flex items-center justify-between text-[10px]">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
-                    <span className="text-[#AAA] truncate max-w-[110px]">{s.name.toUpperCase()}</span>
+          <div className="rounded-2xl overflow-hidden" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
+            <CardHeader title="Sector Allocation" />
+            <div className="p-4">
+              <ResponsiveContainer width="100%" height={160}>
+                <PieChart>
+                  <Pie data={sectorData} cx="50%" cy="50%" innerRadius={45} outerRadius={72}
+                    dataKey="value" paddingAngle={2} stroke={NEAR_BLACK} strokeWidth={2}>
+                    {sectorData.map((_, i) => (
+                      <Cell key={i} fill={GOLD_SCALE[i % GOLD_SCALE.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={chartTooltipStyle} formatter={(v: unknown) => [`${v}%`, ""]} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="space-y-1.5 mt-2">
+                {sectorData.slice(0, 6).map((s, i) => (
+                  <div key={s.name} className="flex items-center justify-between text-[11px]">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: GOLD_SCALE[i % GOLD_SCALE.length] }} />
+                      <span className="truncate max-w-[110px]" style={{ color: WHITE }}>{s.name}</span>
+                    </div>
+                    <span className="tabular-nums" style={{ color: MUTED }}>{s.value}%</span>
                   </div>
-                  <span className="text-[#E0E0E0] tabular-nums">{s.value}%</span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="lg:col-span-2 bg-[#0D0D0D] border border-[#2A2A2A] p-4">
-            <div className="bg-[#F5821F] px-3 py-1.5 -mx-4 -mt-4 mb-4">
-              <span className="text-black text-[10px] font-bold tracking-[0.15em]">
-                30-DAY PERFORMANCE · TOTAL VALUE
-              </span>
+          <div className="lg:col-span-2 rounded-2xl overflow-hidden" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
+            <CardHeader title="30-Day Performance · Total Value" />
+            <div className="p-4">
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={performance} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
+                  <XAxis dataKey="as_of_date" tick={chartTick}
+                    tickFormatter={v => v?.slice(5)} interval="preserveStartEnd" />
+                  <YAxis tick={chartTick}
+                    tickFormatter={v => `$${(v/1e6).toFixed(0)}M`} width={52} />
+                  <Tooltip
+                    contentStyle={chartTooltipStyle}
+                    formatter={(v: unknown) => [fmt(v as number), "Value"]}
+                    labelFormatter={l => l?.slice(0, 10)}
+                  />
+                  <Line type="monotone" dataKey="total_value" stroke={GOLD} strokeWidth={1.5} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={performance} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1A1A1A" />
-                <XAxis dataKey="as_of_date" tick={{ fill: "#888", fontSize: 9, fontFamily: "monospace" }}
-                  tickFormatter={v => v?.slice(5)} interval="preserveStartEnd" />
-                <YAxis tick={{ fill: "#888", fontSize: 9, fontFamily: "monospace" }}
-                  tickFormatter={v => `$${(v/1e6).toFixed(0)}M`} width={52} />
-                <Tooltip
-                  contentStyle={{ background: "#0D0D0D", border: "1px solid #2A2A2A", fontSize: 10, fontFamily: "monospace" }}
-                  formatter={(v: unknown) => [fmt(v as number), "Value"]}
-                  labelFormatter={l => l?.slice(0, 10)}
-                />
-                <Line type="monotone" dataKey="total_value" stroke="#F5821F" strokeWidth={1.5} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
           </div>
         </div>
       )}
 
       {/* ── POSITIONS TAB ────────────────────────────────────────────────── */}
       {activeTab === "positions" && (
-        <div className="border border-[#2A2A2A]">
-          <div className="bg-[#F5821F] px-3 py-1.5">
-            <span className="text-black text-[10px] font-bold tracking-[0.15em]">
-              POSITIONS · {positions.length} HOLDINGS
-            </span>
-          </div>
+        <div className="rounded-2xl overflow-hidden" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
+          <CardHeader title={`Positions · ${positions.length} holdings`} />
           <div className="overflow-x-auto">
             <table>
               <thead>
@@ -341,31 +335,31 @@ export default function PortfolioPage() {
                   const gain = Number(p.current_price) - Number(p.avg_cost_basis);
                   return (
                     <tr key={p.position_id}>
-                      <td className="font-bold text-[#F5821F] tracking-wider">
+                      <td className="font-bold tracking-wide" style={{ color: GOLD }}>
                         {p.security?.ticker_symbol || "—"}
                       </td>
-                      <td className="text-[#AAA] max-w-[160px] truncate">
+                      <td className="max-w-[160px] truncate" style={{ color: MUTED }}>
                         {p.security?.security_name || "—"}
                       </td>
-                      <td className="text-[#888]">{p.security?.sector || "—"}</td>
+                      <td style={{ color: MUTED }}>{p.security?.sector || "—"}</td>
                       <td>
                         <span className={`badge ${p.position_type === "long" ? "badge-blue" : "badge-high"}`}>
                           {p.position_type?.toUpperCase()}
                         </span>
                       </td>
-                      <td className="text-right text-[#E0E0E0] tabular-nums">
+                      <td className="text-right tabular-nums" style={{ color: WHITE }}>
                         {Number(p.quantity).toLocaleString()}
                       </td>
-                      <td className="text-right text-[#888] tabular-nums">
+                      <td className="text-right tabular-nums" style={{ color: MUTED }}>
                         ${Number(p.avg_cost_basis).toFixed(2)}
                       </td>
-                      <td className={`text-right font-bold tabular-nums ${gain >= 0 ? "text-[#00CC44]" : "text-[#FF4040]"}`}>
+                      <td className="text-right font-bold tabular-nums" style={{ color: gain >= 0 ? GREEN : RED }}>
                         ${Number(p.current_price).toFixed(2)}
                       </td>
-                      <td className="text-right text-[#E0E0E0] tabular-nums">
+                      <td className="text-right tabular-nums" style={{ color: WHITE }}>
                         {fmt(Number(p.market_value))}
                       </td>
-                      <td className="text-right text-[#E0E0E0] tabular-nums">
+                      <td className="text-right tabular-nums" style={{ color: WHITE }}>
                         {(Number(p.weight) * 100).toFixed(1)}%
                       </td>
                     </tr>
@@ -383,53 +377,53 @@ export default function PortfolioPage() {
 
           {/* Inline Alerts Panel */}
           {riskAlerts.length > 0 && (
-            <div className="border border-[#2A2A2A] overflow-hidden">
+            <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
               <div
-                className="flex items-center justify-between px-3 py-1.5"
-                style={{ background: "linear-gradient(to right, #FF8000, #7A2500)" }}
+                className="flex items-center justify-between px-4 py-2.5"
+                style={{ background: `linear-gradient(to right, ${GOLD}, ${AMBER_DARK})` }}
               >
                 <div className="flex items-center gap-2">
-                  <Bell size={11} className="text-white" />
-                  <span className="text-white text-[10px] font-bold tracking-[0.18em] uppercase">Risk Alerts</span>
-                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(0,0,0,0.30)", color: "#fff" }}>
+                  <Bell size={12} className="text-black" />
+                  <span className="text-black text-[11px] font-bold tracking-wide uppercase">Risk Alerts</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(0,0,0,0.25)", color: "#fff" }}>
                     {riskAlerts.length} unread
                   </span>
                 </div>
-                <button onClick={handleDismissAllRiskAlerts} className="flex items-center gap-1 text-white/70 hover:text-white text-[9px] tracking-wider transition-colors">
-                  <CheckCheck size={10} /> MARK ALL READ
+                <button onClick={handleDismissAllRiskAlerts} className="flex items-center gap-1 text-black/60 hover:text-black text-[10px] tracking-wide transition-colors">
+                  <CheckCheck size={11} /> Mark all read
                 </button>
               </div>
-              <div className="divide-y" style={{ borderColor: "rgba(255,120,0,0.08)" }}>
+              <div style={{ background: NEAR_BLACK }}>
                 {riskAlerts.map(a => {
-                  const colorMap: Record<string, string> = { critical: "#FF4040", warning: "#FFB300", info: "#00CC44" };
-                  const color = colorMap[a.severity] ?? "#888";
+                  const colorMap: Record<string, string> = { critical: RED, warning: WARNING, info: GREEN };
+                  const color = colorMap[a.severity] ?? MUTED;
                   return (
                     <div
                       key={a.alert_id}
-                      className="flex items-start gap-3 px-4 py-3 bg-[#0D0D0D] transition-colors"
-                      style={{ borderLeft: `3px solid ${color}` }}
+                      className="flex items-start gap-3 px-4 py-3 transition-colors"
+                      style={{ borderLeft: `3px solid ${color}`, borderTop: `1px solid ${BORDER}` }}
                     >
                       <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: color }} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-[8px] font-bold tracking-wider px-1 border" style={{ color, borderColor: `${color}40` }}>
+                          <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded-full" style={{ color, border: `1px solid ${color}40` }}>
                             {a.severity.toUpperCase()}
                           </span>
                           {a.alert_type === "ai" && (
                             <span
-                              className="flex items-center gap-0.5 text-[8px] font-bold tracking-wider px-1 py-0.5 border shrink-0"
-                              style={{ color: "#F5821F", borderColor: "rgba(245,130,31,0.4)", background: "rgba(245,130,31,0.08)" }}
+                              className="flex items-center gap-0.5 text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded-full shrink-0"
+                              style={{ color: GOLD, border: `1px solid ${BORDER}`, background: "rgba(250,189,73,0.08)" }}
                               title="Generated by GPT-4o"
                             >
                               <Sparkles size={8} /> AI
                             </span>
                           )}
-                          <span className="text-[9px] font-semibold" style={{ color: "#E8C090" }}>{a.title}</span>
+                          <span className="text-[10px] font-semibold" style={{ color: WHITE }}>{a.title}</span>
                         </div>
-                        <p className="text-[9px] leading-relaxed" style={{ color: "#7A5030" }}>{a.message}</p>
+                        <p className="text-[10px] leading-relaxed" style={{ color: MUTED }}>{a.message}</p>
                       </div>
                       <button onClick={() => handleDismissRiskAlert(a.alert_id)} className="shrink-0 mt-0.5 p-0.5" title="Mark this alert as read">
-                        <X size={11} style={{ color: "#A87860" }} className="hover:text-[#FF8000] transition-colors" />
+                        <X size={11} style={{ color: MUTED }} className="hover:opacity-70 transition-opacity" />
                       </button>
                     </div>
                   );
@@ -441,71 +435,70 @@ export default function PortfolioPage() {
           {/* Toolbar */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[#888] text-[10px]">
+              <p className="text-[11px]" style={{ color: MUTED }}>
                 {riskData?.computed_at
                   ? `Last computed: ${new Date(riskData.computed_at).toLocaleString()} · Price date: ${riskData.price_date ?? "—"}`
                   : "Risk metrics have not been computed yet."}
               </p>
-              <p className="text-[#555] text-[9px] mt-0.5">Pre-computed daily at 17:30 ET · Weights based on real-time prices × synthetic quantities</p>
+              <p className="text-[10px] mt-0.5" style={{ color: MUTED }}>Pre-computed daily at 17:30 ET · Weights based on real-time prices × synthetic quantities</p>
             </div>
             <button
               onClick={triggerRefresh}
               disabled={riskRefreshing}
-              className="flex items-center gap-2 px-3 py-2 border border-[#F5821F]/50 text-[#F5821F] text-[10px] hover:bg-[#F5821F]/10 transition-colors tracking-wider disabled:opacity-50"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[11px] tracking-wide transition-colors disabled:opacity-50"
+              style={{ border: `1px solid ${BORDER}`, color: GOLD }}
             >
-              <RefreshCw size={11} className={riskRefreshing ? "animate-spin" : ""} />
-              {riskRefreshing ? "COMPUTING…" : "REFRESH"}
+              <RefreshCw size={12} className={riskRefreshing ? "animate-spin" : ""} />
+              {riskRefreshing ? "Computing…" : "Refresh"}
             </button>
           </div>
 
           {riskLoading && <LoadingSpinner label="Loading risk metrics..." />}
 
           {!riskLoading && riskData?.status === "not_computed" && (
-            <div className="border border-[#2A2A2A] p-8 text-center">
-              <p className="text-[#888] text-[11px] tracking-wider">No risk metrics computed yet.</p>
-              <p className="text-[#555] text-[10px] mt-1">Click REFRESH to compute now, or wait for the 17:30 ET daily job.</p>
+            <div className="rounded-2xl p-8 text-center" style={{ border: `1px solid ${BORDER}` }}>
+              <p className="text-[11px] tracking-wide" style={{ color: MUTED }}>No risk metrics computed yet.</p>
+              <p className="text-[10px] mt-1" style={{ color: MUTED }}>Click Refresh to compute now, or wait for the 17:30 ET daily job.</p>
             </div>
           )}
 
           {!riskLoading && riskData?.status === "ok" && riskData.var && !riskData.var.error && (
             <>
               {/* VaR Grid */}
-              <div>
-                <div className="bg-[#F5821F] px-3 py-1.5 mb-0">
-                  <span className="text-black text-[10px] font-bold tracking-[0.15em]">VALUE AT RISK (VaR) · HISTORICAL SIMULATION</span>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 border border-[#2A2A2A] border-t-0">
+              <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
+                <CardHeader title="Value at Risk (VaR) · Historical Simulation" />
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3" style={{ background: NEAR_BLACK }}>
                   {[
                     { label: "95% 1-DAY",  val: riskData.var.historical?.var_95_1d_pct },
                     { label: "99% 1-DAY",  val: riskData.var.historical?.var_99_1d_pct },
                     { label: "95% 10-DAY", val: riskData.var.historical?.var_95_10d_pct },
                     { label: "99% 10-DAY", val: riskData.var.historical?.var_99_10d_pct },
-                  ].map(({ label, val }, i) => (
-                    <div key={label} className={`p-4 bg-[#0D0D0D] ${i < 3 ? "border-r border-[#2A2A2A]" : ""}`}>
-                      <p className="text-[#888] text-[9px] font-bold tracking-[0.12em] mb-2">{label}</p>
-                      <p className={`text-2xl font-bold tabular-nums ${varColor(val ?? 0)}`}>
+                  ].map(({ label, val }) => (
+                    <div key={label} className="p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${BORDER}` }}>
+                      <p className="text-[9px] font-bold tracking-wide mb-2" style={{ color: MUTED }}>{label}</p>
+                      <p className="text-2xl font-extrabold tabular-nums" style={{ color: varColor(val ?? 0) }}>
                         {val != null ? `${val.toFixed(2)}%` : "—"}
                       </p>
-                      <p className="text-[#555] text-[9px] mt-1">max expected loss</p>
+                      <p className="text-[9px] mt-1" style={{ color: MUTED }}>max expected loss</p>
                     </div>
                   ))}
                 </div>
                 {riskData.var.distribution && (
-                  <div className="border border-[#2A2A2A] border-t-0 bg-[#0D0D0D] px-4 py-2 flex gap-8 flex-wrap">
-                    <span className="text-[#888] text-[9px]">
-                      DAILY VOL <span className="text-[#E0E0E0] ml-1">{riskData.var.distribution.daily_vol_pct.toFixed(3)}%</span>
+                  <div className="px-4 py-3 flex gap-8 flex-wrap" style={{ background: NEAR_BLACK, borderTop: `1px solid ${BORDER}` }}>
+                    <span className="text-[10px]" style={{ color: MUTED }}>
+                      DAILY VOL <span className="ml-1" style={{ color: WHITE }}>{riskData.var.distribution.daily_vol_pct.toFixed(3)}%</span>
                     </span>
-                    <span className="text-[#888] text-[9px]">
-                      ANN. VOL <span className="text-[#E0E0E0] ml-1">{riskData.var.distribution.annualized_vol_pct.toFixed(2)}%</span>
+                    <span className="text-[10px]" style={{ color: MUTED }}>
+                      ANN. VOL <span className="ml-1" style={{ color: WHITE }}>{riskData.var.distribution.annualized_vol_pct.toFixed(2)}%</span>
                     </span>
-                    <span className="text-[#888] text-[9px]">
-                      SKEWNESS <span className="text-[#E0E0E0] ml-1">{riskData.var.distribution.skewness.toFixed(3)}</span>
+                    <span className="text-[10px]" style={{ color: MUTED }}>
+                      SKEWNESS <span className="ml-1" style={{ color: WHITE }}>{riskData.var.distribution.skewness.toFixed(3)}</span>
                     </span>
-                    <span className="text-[#888] text-[9px]">
-                      EX. KURTOSIS <span className="text-[#E0E0E0] ml-1">{riskData.var.distribution.excess_kurtosis.toFixed(3)}</span>
+                    <span className="text-[10px]" style={{ color: MUTED }}>
+                      EX. KURTOSIS <span className="ml-1" style={{ color: WHITE }}>{riskData.var.distribution.excess_kurtosis.toFixed(3)}</span>
                     </span>
-                    <span className="text-[#888] text-[9px]">
-                      OBS <span className="text-[#E0E0E0] ml-1">{riskData.var.observations}</span>
+                    <span className="text-[10px]" style={{ color: MUTED }}>
+                      OBS <span className="ml-1" style={{ color: WHITE }}>{riskData.var.observations}</span>
                     </span>
                   </div>
                 )}
@@ -513,11 +506,9 @@ export default function PortfolioPage() {
 
               {/* Stress Tests */}
               {riskData.stress_tests && riskData.stress_tests.length > 0 && (
-                <div>
-                  <div className="bg-[#F5821F] px-3 py-1.5">
-                    <span className="text-black text-[10px] font-bold tracking-[0.15em]">HISTORICAL STRESS TESTS</span>
-                  </div>
-                  <div className="border border-[#2A2A2A] border-t-0 overflow-x-auto">
+                <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
+                  <CardHeader title="Historical Stress Tests" />
+                  <div className="overflow-x-auto" style={{ background: NEAR_BLACK }}>
                     <table>
                       <thead>
                         <tr>
@@ -532,16 +523,16 @@ export default function PortfolioPage() {
                       <tbody>
                         {riskData.stress_tests.map(st => (
                           <tr key={st.name}>
-                            <td className="font-bold text-[#E0E0E0]">{st.name}</td>
-                            <td className="text-[#888]">{st.label}</td>
-                            <td className={`text-right font-bold tabular-nums text-lg ${st.portfolio_impact_pct < 0 ? "text-[#FF4040]" : "text-[#00CC44]"}`}>
+                            <td className="font-bold" style={{ color: WHITE }}>{st.name}</td>
+                            <td style={{ color: MUTED }}>{st.label}</td>
+                            <td className="text-right font-bold tabular-nums text-lg" style={{ color: st.portfolio_impact_pct < 0 ? RED : GREEN }}>
                               {st.portfolio_impact_pct >= 0 ? "+" : ""}{st.portfolio_impact_pct.toFixed(2)}%
                             </td>
-                            <td className="text-right text-[#F5821F] tabular-nums font-bold">{st.worst_position}</td>
-                            <td className={`text-right tabular-nums ${st.worst_position_pct < 0 ? "text-[#FF4040]" : "text-[#00CC44]"}`}>
+                            <td className="text-right tabular-nums font-bold" style={{ color: GOLD }}>{st.worst_position}</td>
+                            <td className="text-right tabular-nums" style={{ color: st.worst_position_pct < 0 ? RED : GREEN }}>
                               {st.worst_position_pct >= 0 ? "+" : ""}{st.worst_position_pct.toFixed(2)}%
                             </td>
-                            <td className="text-right text-[#888] text-[10px]">
+                            <td className="text-right text-[10px]" style={{ color: MUTED }}>
                               {st.tickers_with_data}/{st.tickers_total} tickers
                             </td>
                           </tr>
@@ -554,16 +545,14 @@ export default function PortfolioPage() {
 
               {/* Parametric Shock Scenarios */}
               {riskData.parametric_shocks && riskData.parametric_shocks.length > 0 && (
-                <div>
-                  <div className="bg-[#F5821F] px-3 py-1.5">
-                    <span className="text-black text-[10px] font-bold tracking-[0.15em]">PARAMETRIC SHOCK SCENARIOS</span>
-                  </div>
-                  <div className="border border-[#2A2A2A] border-t-0 bg-[#0D0D0D] px-4 py-2">
-                    <p className="text-[#555] text-[9px]">
+                <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
+                  <CardHeader title="Parametric Shock Scenarios" />
+                  <div className="px-4 py-3" style={{ background: NEAR_BLACK, borderBottom: `1px solid ${BORDER}` }}>
+                    <p className="text-[10px]" style={{ color: MUTED }}>
                       Sensitivity-based — applied via computed factor beta / rate-duration proxy to today&apos;s book, not historical replay.
                     </p>
                   </div>
-                  <div className="border border-[#2A2A2A] border-t-0 overflow-x-auto">
+                  <div className="overflow-x-auto" style={{ background: NEAR_BLACK }}>
                     <table>
                       <thead>
                         <tr>
@@ -575,15 +564,14 @@ export default function PortfolioPage() {
                       <tbody>
                         {riskData.parametric_shocks.map(ps => (
                           <tr key={ps.name}>
-                            <td className="font-bold text-[#E0E0E0]">{ps.name}</td>
-                            <td className={`text-right font-bold tabular-nums text-lg ${
-                              ps.portfolio_impact_pct == null ? "text-[#888]"
-                              : ps.portfolio_impact_pct < 0 ? "text-[#FF4040]" : "text-[#00CC44]"
-                            }`}>
+                            <td className="font-bold" style={{ color: WHITE }}>{ps.name}</td>
+                            <td className="text-right font-bold tabular-nums text-lg" style={{
+                              color: ps.portfolio_impact_pct == null ? MUTED : ps.portfolio_impact_pct < 0 ? RED : GREEN
+                            }}>
                               {ps.portfolio_impact_pct == null ? "—" :
                                 `${ps.portfolio_impact_pct >= 0 ? "+" : ""}${ps.portfolio_impact_pct.toFixed(2)}%`}
                             </td>
-                            <td className="text-right text-[#888] text-[10px]">
+                            <td className="text-right text-[10px]" style={{ color: MUTED }}>
                               {ps.methodology === "duration_proxy" &&
                                 `${ps.fixed_income_weight_pct?.toFixed(1)}% FI @ ${ps.duration_proxy_years}yr duration`}
                               {ps.methodology === "market_beta" &&
@@ -600,17 +588,15 @@ export default function PortfolioPage() {
 
               {/* Factor Exposure */}
               {riskData.factor_exposure && !riskData.factor_exposure.error && riskData.factor_exposure.factors && (
-                <div>
-                  <div className="bg-[#F5821F] px-3 py-1.5">
-                    <span className="text-black text-[10px] font-bold tracking-[0.15em]">FACTOR EXPOSURE · OLS REGRESSION (2Y)</span>
-                  </div>
-                  <div className="border border-[#2A2A2A] border-t-0 bg-[#0D0D0D] p-4">
+                <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
+                  <CardHeader title="Factor Exposure · OLS Regression (2Y)" />
+                  <div className="p-4" style={{ background: NEAR_BLACK }}>
                     {riskData.factor_exposure.market_interp && (
-                      <p className="text-[#FFB300] text-[10px] mb-4 tracking-wider">{riskData.factor_exposure.market_interp}</p>
+                      <p className="text-[11px] mb-4 tracking-wide" style={{ color: WARNING }}>{riskData.factor_exposure.market_interp}</p>
                     )}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       <div>
-                        <p className="text-[#888] text-[9px] mb-3 tracking-wider">BETA TO FACTOR</p>
+                        <p className="text-[10px] mb-3 tracking-wide" style={{ color: MUTED }}>BETA TO FACTOR</p>
                         <ResponsiveContainer width="100%" height={180}>
                           <BarChart
                             data={Object.entries(riskData.factor_exposure.factors).map(([name, f]) => ({
@@ -618,19 +604,16 @@ export default function PortfolioPage() {
                             }))}
                             margin={{ left: -10, right: 10 }}
                           >
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1A1A1A" />
-                            <XAxis dataKey="name" tick={{ fill: "#888", fontSize: 9, fontFamily: "monospace" }} />
-                            <YAxis tick={{ fill: "#888", fontSize: 9, fontFamily: "monospace" }} />
-                            <Tooltip
-                              contentStyle={{ background: "#0D0D0D", border: "1px solid #2A2A2A", fontSize: 10, fontFamily: "monospace" }}
-                              formatter={(v: unknown) => [Number(v).toFixed(3), "Beta"]}
-                            />
-                            <Bar dataKey="beta" fill="#F5821F" />
+                            <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
+                            <XAxis dataKey="name" tick={chartTick} />
+                            <YAxis tick={chartTick} />
+                            <Tooltip contentStyle={chartTooltipStyle} formatter={(v: unknown) => [Number(v).toFixed(3), "Beta"]} />
+                            <Bar dataKey="beta" fill={GOLD} radius={[4, 4, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
                       <div>
-                        <p className="text-[#888] text-[9px] mb-3 tracking-wider">FACTOR DETAIL</p>
+                        <p className="text-[10px] mb-3 tracking-wide" style={{ color: MUTED }}>FACTOR DETAIL</p>
                         <table>
                           <thead>
                             <tr>
@@ -643,12 +626,12 @@ export default function PortfolioPage() {
                           <tbody>
                             {Object.entries(riskData.factor_exposure.factors).map(([fname, f]) => (
                               <tr key={fname}>
-                                <td className="text-[#E0E0E0]">{fname}</td>
-                                <td className="text-[#F5821F] font-bold">{f.ticker}</td>
-                                <td className={`text-right tabular-nums font-bold ${f.beta > 1.2 ? "text-[#FF4040]" : f.beta < 0.5 ? "text-[#00CC44]" : "text-[#E0E0E0]"}`}>
+                                <td style={{ color: WHITE }}>{fname}</td>
+                                <td className="font-bold" style={{ color: GOLD }}>{f.ticker}</td>
+                                <td className="text-right tabular-nums font-bold" style={{ color: f.beta > 1.2 ? RED : f.beta < 0.5 ? GREEN : WHITE }}>
                                   {f.beta.toFixed(3)}
                                 </td>
-                                <td className="text-right text-[#888] tabular-nums">{(f.r_squared * 100).toFixed(1)}%</td>
+                                <td className="text-right tabular-nums" style={{ color: MUTED }}>{(f.r_squared * 100).toFixed(1)}%</td>
                               </tr>
                             ))}
                           </tbody>
@@ -660,19 +643,17 @@ export default function PortfolioPage() {
               )}
 
               {/* VaR Trend Chart */}
-              <div>
-                <div className="bg-[#F5821F] px-3 py-1.5">
-                  <span className="text-black text-[10px] font-bold tracking-[0.15em]">VAR TREND · 30-DAY HISTORY</span>
-                </div>
+              <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
+                <CardHeader title="VaR Trend · 30-Day History" />
                 {riskHistory.length < 2 ? (
-                  <div className="border border-[#2A2A2A] border-t-0 bg-[#0D0D0D] p-6 text-center">
-                    <p className="text-[#888] text-[10px] tracking-wider">No trend data yet.</p>
-                    <p className="text-[#555] text-[9px] mt-1">Run the risk job daily to build history. At least 2 data points needed.</p>
+                  <div className="p-6 text-center" style={{ background: NEAR_BLACK }}>
+                    <p className="text-[11px] tracking-wide" style={{ color: MUTED }}>No trend data yet.</p>
+                    <p className="text-[10px] mt-1" style={{ color: MUTED }}>Run the risk job daily to build history. At least 2 data points needed.</p>
                   </div>
                 ) : (
-                  <div className="border border-[#2A2A2A] border-t-0 bg-[#0D0D0D] p-4">
-                    <p className="text-[#555] text-[9px] mb-3 tracking-wider">
-                      LOSS % (ABSOLUTE VALUE) · DASHED LINES = ALERT THRESHOLDS (WARNING 2% / CRITICAL 3.5%)
+                  <div className="p-4" style={{ background: NEAR_BLACK }}>
+                    <p className="text-[10px] mb-3 tracking-wide" style={{ color: MUTED }}>
+                      Loss % (absolute value) · dashed lines = alert thresholds (warning 2% / critical 3.5%)
                     </p>
                     <ResponsiveContainer width="100%" height={200}>
                       <LineChart
@@ -683,29 +664,18 @@ export default function PortfolioPage() {
                         }))}
                         margin={{ top: 4, right: 16, bottom: 0, left: 0 }}
                       >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1A1A1A" />
-                        <XAxis
-                          dataKey="date"
-                          tick={{ fill: "#888", fontSize: 9, fontFamily: "monospace" }}
-                          interval="preserveStartEnd"
-                        />
-                        <YAxis
-                          tick={{ fill: "#888", fontSize: 9, fontFamily: "monospace" }}
-                          tickFormatter={v => `${v.toFixed(1)}%`}
-                          width={44}
-                        />
-                        <Tooltip
-                          contentStyle={{ background: "#0D0D0D", border: "1px solid #2A2A2A", fontSize: 10, fontFamily: "monospace" }}
-                          formatter={(v: unknown) => [`${Number(v).toFixed(3)}%`, ""]}
-                        />
+                        <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
+                        <XAxis dataKey="date" tick={chartTick} interval="preserveStartEnd" />
+                        <YAxis tick={chartTick} tickFormatter={v => `${v.toFixed(1)}%`} width={44} />
+                        <Tooltip contentStyle={chartTooltipStyle} formatter={(v: unknown) => [`${Number(v).toFixed(3)}%`, ""]} />
                         <Legend
-                          wrapperStyle={{ fontSize: 9, fontFamily: "monospace", color: "#888", paddingTop: 8 }}
+                          wrapperStyle={{ fontSize: 9, color: MUTED, paddingTop: 8 }}
                           formatter={(value) => value === "var_95" ? "95% VaR (1-day)" : "99% VaR (1-day)"}
                         />
-                        <ReferenceLine y={2}   stroke="#FFB300" strokeDasharray="4 2" strokeWidth={1} label={{ value: "WARN", fill: "#FFB300", fontSize: 8, fontFamily: "monospace" }} />
-                        <ReferenceLine y={3.5} stroke="#FF4040" strokeDasharray="4 2" strokeWidth={1} label={{ value: "CRIT", fill: "#FF4040", fontSize: 8, fontFamily: "monospace" }} />
-                        <Line type="monotone" dataKey="var_95" stroke="#FFB300" strokeWidth={1.5} dot={false} connectNulls />
-                        <Line type="monotone" dataKey="var_99" stroke="#FF4040" strokeWidth={1.5} dot={false} connectNulls />
+                        <ReferenceLine y={2}   stroke={WARNING} strokeDasharray="4 2" strokeWidth={1} label={{ value: "WARN", fill: WARNING, fontSize: 8 }} />
+                        <ReferenceLine y={3.5} stroke={RED} strokeDasharray="4 2" strokeWidth={1} label={{ value: "CRIT", fill: RED, fontSize: 8 }} />
+                        <Line type="monotone" dataKey="var_95" stroke={WARNING} strokeWidth={1.5} dot={false} connectNulls />
+                        <Line type="monotone" dataKey="var_99" stroke={RED} strokeWidth={1.5} dot={false} connectNulls />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>

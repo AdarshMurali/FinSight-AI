@@ -1,88 +1,88 @@
 @import "tailwindcss";
 
-/* ── Bloomberg Terminal colour tokens ─────────────────────────────────────── */
+/* ── Bloomberg Professional–inspired colour tokens (black + gold) ─────────── */
 @theme {
-  --color-bg-primary:   #000000;
-  --color-bg-secondary: #0D0D0D;
-  --color-bg-tertiary:  #1A1A1A;
-  --color-bg-border:    #2A2A2A;
+  --color-bg-primary:   #010101;
+  --color-bg-secondary: #0a0a0a;
+  --color-bg-tertiary:  #14120c;
+  --color-bg-border:    rgba(250,189,73,0.14);
 
-  --color-accent-blue:   #F5821F;
-  --color-accent-green:  #00CC44;
-  --color-accent-red:    #FF4040;
-  --color-accent-yellow: #FFB300;
-  --color-accent-purple: #FFB300;
+  --color-accent-blue:   #fabd49;
+  --color-accent-green:  #00C853;
+  --color-accent-red:    #e51e3c;
+  --color-accent-yellow: #FFCC1D;
+  --color-accent-purple: #fabd49;
 
-  --color-text-primary:   #E0E0E0;
-  --color-text-secondary: #888888;
-  --color-text-muted:     #555555;
+  --color-text-primary:   #FFFFFF;
+  --color-text-secondary: #9C9CA5;
+  --color-text-muted:     #6b6b73;
 }
 
 * { box-sizing: border-box; }
 
 body {
-  background-color: #000000;
-  color: #E0E0E0;
-  font-family: 'Consolas', 'Monaco', 'Lucida Console', 'Courier New', monospace;
+  background-color: #010101;
+  color: #FFFFFF;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 /* ── Scrollbar ─────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: #000; }
-::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 0; }
-::-webkit-scrollbar-thumb:hover { background: #F5821F; }
+::-webkit-scrollbar-thumb { background: #2A2410; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #fabd49; }
 
 /* ── P&L helpers ───────────────────────────────────────────────────────────── */
-.positive { color: #00CC44; }
-.negative { color: #FF4040; }
-.neutral  { color: #FFB300; }
+.positive { color: #00C853; }
+.negative { color: #e51e3c; }
+.neutral  { color: #FFCC1D; }
 
 /* ── Tables ────────────────────────────────────────────────────────────────── */
 table { width: 100%; border-collapse: collapse; }
 th {
-  color: #F5821F;
+  color: #fabd49;
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-weight: 700;
-  padding: 6px 12px;
+  padding: 8px 12px;
   text-align: left;
-  border-bottom: 1px solid #2A2A2A;
-  background: #0D0D0D;
+  border-bottom: 1px solid rgba(250,189,73,0.14);
+  background: #0a0a0a;
 }
 td {
-  padding: 8px 12px;
-  border-bottom: 1px solid #1A1A1A;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(250,189,73,0.08);
   font-size: 0.75rem;
-  color: #E0E0E0;
+  color: #FFFFFF;
 }
-tr:hover td { background: #1A1A1A; }
+tr:hover td { background: rgba(250,189,73,0.05); }
 
 /* ── Badges ────────────────────────────────────────────────────────────────── */
 .badge {
   display: inline-block;
-  padding: 1px 6px;
-  border-radius: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
   font-size: 0.65rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   border: 1px solid;
 }
-.badge-high   { color: #FF4040; border-color: rgba(255,64,64,0.4);  background: rgba(255,64,64,0.08);  }
-.badge-medium { color: #FFB300; border-color: rgba(255,179,0,0.4);  background: rgba(255,179,0,0.08);  }
-.badge-low    { color: #00CC44; border-color: rgba(0,204,68,0.4);   background: rgba(0,204,68,0.08);   }
-.badge-blue   { color: #F5821F; border-color: rgba(245,130,31,0.4); background: rgba(245,130,31,0.08); }
-.badge-yellow { color: #FFB300; border-color: rgba(255,179,0,0.4);  background: rgba(255,179,0,0.08);  }
-.badge-purple { color: #FFB300; border-color: rgba(255,179,0,0.4);  background: rgba(255,179,0,0.08);  }
+.badge-high   { color: #e51e3c; border-color: rgba(229,30,60,0.4);  background: rgba(229,30,60,0.1);  }
+.badge-medium { color: #FFCC1D; border-color: rgba(255,204,29,0.4); background: rgba(255,204,29,0.1); }
+.badge-low    { color: #00C853; border-color: rgba(0,200,83,0.4);   background: rgba(0,200,83,0.1);   }
+.badge-blue   { color: #fabd49; border-color: rgba(250,189,73,0.4); background: rgba(250,189,73,0.1); }
+.badge-yellow { color: #FFCC1D; border-color: rgba(255,204,29,0.4); background: rgba(255,204,29,0.1); }
+.badge-purple { color: #fabd49; border-color: rgba(250,189,73,0.4); background: rgba(250,189,73,0.1); }
 
 /* ── WebSocket value flash animations ──────────────────────────────────────── */
 @keyframes flash-up {
-  0%   { color: #00CC44; }
+  0%   { color: #00C853; }
   100% { color: inherit; }
 }
 @keyframes flash-down {
-  0%   { color: #FF4040; }
+  0%   { color: #e51e3c; }
   100% { color: inherit; }
 }
 .flash-up   { animation: flash-up   0.9s ease-out forwards; }

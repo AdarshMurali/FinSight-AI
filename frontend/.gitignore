@@ -42,3 +42,12 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# design-comparison scratch routes — local-only, never deployed.
+# Bloomberg won the comparison and is promoted to "/" (see AppShell.tsx);
+# these snapshots stay on disk for reference but are excluded from git/prod.
+/app/home-hdfc/
+/app/home-hdfc-v1/
+/app/home-bloomberg/
+/components/HdfcSidebar.tsx
+/components/HdfcSidebarV1.tsx

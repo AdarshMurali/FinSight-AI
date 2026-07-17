@@ -11,11 +11,12 @@ import {
 } from "@/lib/api";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { Send, MessageSquare, RotateCcw, ChevronDown } from "lucide-react";
+import { manrope, GOLD, WHITE, MUTED, NEAR_BLACK, BORDER, RED, GREEN } from "@/lib/theme";
 
 // ── Typing cursor ─────────────────────────────────────────────────────────────
 function Cursor() {
   return (
-    <span className="inline-block w-[7px] h-[13px] bg-[#F5821F] ml-0.5 animate-pulse align-middle" />
+    <span className="inline-block w-[7px] h-[13px] ml-0.5 animate-pulse align-middle" style={{ background: GOLD }} />
   );
 }
 
@@ -30,12 +31,12 @@ function ToolChips({ tools }: { tools: string[] }) {
     run_risk_analysis:    "RISK ANALYSIS",
   };
   return (
-    <div className="flex flex-wrap gap-1 mb-2 pb-2 border-b border-[#1A1A1A]">
+    <div className="flex flex-wrap gap-1 mb-2 pb-2" style={{ borderBottom: `1px solid ${BORDER}` }}>
       {tools.map((t, i) => (
         <span
           key={i}
-          className="text-[8px] font-bold tracking-wider px-2 py-0.5 border"
-          style={{ color: "#F5821F", borderColor: "rgba(245,130,31,0.25)", background: "rgba(245,130,31,0.06)" }}
+          className="text-[8px] font-bold tracking-wide px-2 py-0.5 rounded-full"
+          style={{ color: GOLD, border: `1px solid ${BORDER}`, background: "rgba(250,189,73,0.06)" }}
         >
           ▸ {labels[t] ?? t.replace(/_/g, " ").toUpperCase()}
         </span>
@@ -60,10 +61,10 @@ function Bubble({
     return (
       <div className="flex justify-end mb-3">
         <div className="max-w-[72%]">
-          <div className="bg-[#F5821F] text-black text-[11px] px-4 py-2.5 leading-5 font-medium">
+          <div className="text-black text-[12px] px-4 py-2.5 leading-5 font-medium rounded-2xl rounded-tr-md" style={{ background: GOLD }}>
             {msg.content}
           </div>
-          <p className="text-[#555] text-[9px] text-right mt-1 tracking-wider">YOU</p>
+          <p className="text-[9px] text-right mt-1 tracking-wide" style={{ color: MUTED }}>YOU</p>
         </div>
       </div>
     );
@@ -72,26 +73,26 @@ function Bubble({
   return (
     <div className="flex justify-start mb-3">
       <div className="max-w-[80%]">
-        <p className="text-[#F5821F] text-[9px] font-bold tracking-[0.15em] mb-1">
+        <p className="text-[9px] font-bold tracking-wide mb-1" style={{ color: GOLD }}>
           FINSIGHT AI
         </p>
-        <div className="bg-[#0D0D0D] border border-[#2A2A2A] text-[#E0E0E0] text-[11px] px-4 py-3 leading-6">
+        <div className="text-[12px] px-4 py-3 leading-6 rounded-2xl rounded-tl-md" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}`, color: WHITE }}>
           <ToolChips tools={toolCalls ?? []} />
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              h1: ({ children }) => <p className="text-[#F5821F] font-bold tracking-wider mt-3 mb-1">{children}</p>,
-              h2: ({ children }) => <p className="text-[#F5821F] font-bold tracking-wider mt-3 mb-1">{children}</p>,
-              h3: ({ children }) => <p className="text-[#F5821F] font-bold tracking-wider mt-3 mb-1">{children}</p>,
-              strong: ({ children }) => <span className="text-white font-bold">{children}</span>,
-              em: ({ children }) => <span className="text-[#AAA] italic">{children}</span>,
+              h1: ({ children }) => <p className="font-bold tracking-wide mt-3 mb-1" style={{ color: GOLD }}>{children}</p>,
+              h2: ({ children }) => <p className="font-bold tracking-wide mt-3 mb-1" style={{ color: GOLD }}>{children}</p>,
+              h3: ({ children }) => <p className="font-bold tracking-wide mt-3 mb-1" style={{ color: GOLD }}>{children}</p>,
+              strong: ({ children }) => <span className="font-bold" style={{ color: WHITE }}>{children}</span>,
+              em: ({ children }) => <span className="italic" style={{ color: MUTED }}>{children}</span>,
               p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
               ul: ({ children }) => <ul className="list-disc list-inside space-y-0.5 mb-2">{children}</ul>,
               ol: ({ children }) => <ol className="list-decimal list-inside space-y-0.5 mb-2">{children}</ol>,
-              li: ({ children }) => <li className="text-[#E0E0E0]">{children}</li>,
-              code: ({ children }) => <code className="bg-[#1A1A1A] text-[#F5821F] px-1 rounded text-[10px]">{children}</code>,
-              pre: ({ children }) => <pre className="bg-[#1A1A1A] p-2 rounded text-[10px] overflow-x-auto mb-2">{children}</pre>,
-              hr: () => <hr className="border-[#2A2A2A] my-2" />,
+              li: ({ children }) => <li style={{ color: WHITE }}>{children}</li>,
+              code: ({ children }) => <code className="px-1 rounded text-[10px]" style={{ background: "rgba(255,255,255,0.06)", color: GOLD }}>{children}</code>,
+              pre: ({ children }) => <pre className="p-2 rounded text-[10px] overflow-x-auto mb-2" style={{ background: "rgba(255,255,255,0.06)" }}>{children}</pre>,
+              hr: () => <hr className="my-2" style={{ borderColor: BORDER }} />,
             }}
           >
             {msg.content}
@@ -111,10 +112,14 @@ function QuestionChip({
   text: string;
   onClick: () => void;
 }) {
+  const [hover, setHover] = useState(false);
   return (
     <button
       onClick={onClick}
-      className="text-left text-[10px] text-[#AAA] border border-[#2A2A2A] px-3 py-2 hover:border-[#F5821F] hover:text-[#F5821F] transition-colors tracking-wide"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="text-left text-[11px] px-3.5 py-2.5 rounded-xl transition-colors tracking-wide"
+      style={{ color: hover ? GOLD : MUTED, border: `1px solid ${hover ? "rgba(250,189,73,0.4)" : BORDER}` }}
     >
       {text}
     </button>
@@ -220,54 +225,58 @@ export default function ChatPage() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className="max-w-5xl mx-auto flex flex-col h-[calc(100vh-52px)] font-mono">
+    <div className={`max-w-5xl mx-auto flex flex-col h-[calc(100vh-72px)] ${manrope.className}`}>
 
       {/* ── Top bar ──────────────────────────────────────────────────────── */}
-      <div className="border border-[#2A2A2A] bg-[#0D0D0D] flex items-center justify-between px-4 py-2 shrink-0">
+      <div className="rounded-t-2xl flex items-center justify-between px-4 py-3 shrink-0" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
         <div className="flex items-center gap-3">
-          <MessageSquare size={13} className="text-[#F5821F]" />
-          <span className="text-[#F5821F] text-[10px] font-bold tracking-[0.18em]">
-            AI CHAT INTERFACE
+          <MessageSquare size={14} style={{ color: GOLD }} />
+          <span className="text-[11px] font-bold tracking-wide" style={{ color: GOLD }}>
+            AI Chat
           </span>
-          <span className="text-[#3A3A3A]">│</span>
-          <span className="text-[#888] text-[9px] tracking-wider">
-            PORTFOLIO Q&amp;A · STREAMING GPT-4o
+          <span style={{ color: BORDER }}>│</span>
+          <span className="text-[10px] tracking-wide" style={{ color: MUTED }}>
+            Portfolio Q&amp;A · streaming GPT-4o
           </span>
         </div>
         <div className="flex items-center gap-3">
           {hasMessages && (
             <button
               onClick={clearChat}
-              className="flex items-center gap-1.5 text-[#666] text-[9px] hover:text-[#AAA] tracking-wider transition-colors"
+              className="flex items-center gap-1.5 text-[10px] tracking-wide transition-colors"
+              style={{ color: MUTED }}
+              onMouseEnter={e => (e.currentTarget.style.color = WHITE)}
+              onMouseLeave={e => (e.currentTarget.style.color = MUTED)}
             >
-              <RotateCcw size={10} />
-              CLEAR
+              <RotateCcw size={11} />
+              Clear
             </button>
           )}
-          <span className="text-[#3A3A3A]">│</span>
+          <span style={{ color: BORDER }}>│</span>
           <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#00CC44] animate-pulse" />
-            <span className="text-[#00CC44] text-[9px] font-bold tracking-wider">LIVE</span>
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: GREEN }} />
+            <span className="text-[10px] font-bold tracking-wide" style={{ color: GREEN }}>LIVE</span>
           </div>
         </div>
       </div>
 
       {/* ── Portfolio selector bar ────────────────────────────────────────── */}
-      <div className="border-x border-b border-[#2A2A2A] bg-black px-4 py-2.5 flex items-center gap-4 shrink-0">
-        <span className="text-[#F5821F] text-[9px] font-bold tracking-[0.15em]">PORTFOLIO</span>
+      <div className="px-4 py-3 flex items-center gap-4 shrink-0" style={{ background: "#000", borderLeft: `1px solid ${BORDER}`, borderRight: `1px solid ${BORDER}` }}>
+        <span className="text-[10px] font-bold tracking-wide" style={{ color: GOLD }}>PORTFOLIO</span>
         <div className="relative">
           <button
             onClick={() => setShowPortfolioMenu(m => !m)}
-            className="flex items-center gap-2 text-[#E0E0E0] text-[10px] border border-[#2A2A2A] px-3 py-1.5 hover:border-[#F5821F] transition-colors"
+            className="flex items-center gap-2 text-[11px] rounded-lg px-3.5 py-2 transition-colors"
+            style={{ color: WHITE, border: `1px solid ${BORDER}` }}
           >
             {selectedPortfolio
               ? `#${selectedPortfolio.portfolio_id} — ${selectedPortfolio.portfolio_name} · ${selectedPortfolio.strategy_type ?? "N/A"}`
               : "Select portfolio"
             }
-            <ChevronDown size={10} className="text-[#888]" />
+            <ChevronDown size={11} style={{ color: MUTED }} />
           </button>
           {showPortfolioMenu && (
-            <div className="absolute top-full left-0 z-50 mt-px w-80 bg-[#0D0D0D] border border-[#2A2A2A] max-h-56 overflow-y-auto">
+            <div className="absolute top-full left-0 z-50 mt-1 w-80 rounded-xl overflow-hidden max-h-56 overflow-y-auto" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
               {portfolios.map(p => (
                 <button
                   key={p.portfolio_id}
@@ -276,14 +285,15 @@ export default function ChatPage() {
                     setShowPortfolioMenu(false);
                     clearChat();
                   }}
-                  className={`w-full text-left px-3 py-2 text-[10px] border-b border-[#1A1A1A] transition-colors ${
-                    p.portfolio_id === selectedId
-                      ? "text-[#F5821F] bg-[#F5821F]/5"
-                      : "text-[#AAA] hover:text-[#E0E0E0] hover:bg-[#1A1A1A]"
-                  }`}
+                  className="w-full text-left px-3.5 py-2.5 text-[11px] transition-colors"
+                  style={{
+                    borderBottom: `1px solid ${BORDER}`,
+                    color: p.portfolio_id === selectedId ? GOLD : MUTED,
+                    background: p.portfolio_id === selectedId ? "rgba(250,189,73,0.06)" : "transparent",
+                  }}
                 >
                   #{String(p.portfolio_id).padStart(3, "0")} — {p.portfolio_name} · {p.strategy_type ?? "N/A"}
-                  <span className="text-[#555] ml-2">
+                  <span className="ml-2" style={{ color: MUTED }}>
                     (Customer #{p.customer_id})
                   </span>
                 </button>
@@ -293,28 +303,28 @@ export default function ChatPage() {
         </div>
         {selectedPortfolio && (
           <div className="flex items-center gap-4 ml-2">
-            <span className="text-[#555] text-[9px] tracking-wider">
-              STRATEGY: <span className="text-[#888]">{selectedPortfolio.strategy_type?.toUpperCase() ?? "—"}</span>
+            <span className="text-[10px] tracking-wide" style={{ color: MUTED }}>
+              STRATEGY: <span style={{ color: WHITE }}>{selectedPortfolio.strategy_type?.toUpperCase() ?? "—"}</span>
             </span>
-            <span className="text-[#555] text-[9px] tracking-wider">
-              CCY: <span className="text-[#888]">{selectedPortfolio.currency}</span>
+            <span className="text-[10px] tracking-wide" style={{ color: MUTED }}>
+              CCY: <span style={{ color: WHITE }}>{selectedPortfolio.currency}</span>
             </span>
           </div>
         )}
       </div>
 
       {/* ── Message area ─────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto border-x border-[#2A2A2A] bg-black px-5 py-4">
+      <div className="flex-1 overflow-y-auto px-5 py-4" style={{ background: "#000", borderLeft: `1px solid ${BORDER}`, borderRight: `1px solid ${BORDER}` }}>
 
         {/* Empty state with suggested questions */}
         {!hasMessages && (
           <div className="flex flex-col items-center justify-center h-full gap-6">
             <div className="text-center">
-              <MessageSquare size={28} className="text-[#2A2A2A] mx-auto mb-3" />
-              <p className="text-[#E0E0E0] text-xs tracking-wider">
+              <MessageSquare size={28} className="mx-auto mb-3" style={{ color: BORDER }} />
+              <p className="text-xs tracking-wide" style={{ color: WHITE }}>
                 Ask anything about this portfolio
               </p>
-              <p className="text-[#555] text-[10px] mt-1 tracking-wider">
+              <p className="text-[10px] mt-1 tracking-wide" style={{ color: MUTED }}>
                 Agentic GPT-4o · calls live tools on demand · ChromaDB RAG
               </p>
             </div>
@@ -346,8 +356,8 @@ export default function ChatPage() {
 
         {/* Error */}
         {error && (
-          <div className="border border-[#FF4040]/30 bg-[#FF4040]/5 text-[#FF4040] text-[10px] px-3 py-2 mt-3 tracking-wide">
-            ERROR: {error}
+          <div className="rounded-lg text-[11px] px-3 py-2 mt-3 tracking-wide" style={{ border: `1px solid ${RED}4d`, background: `${RED}0d`, color: RED }}>
+            Error: {error}
           </div>
         )}
 
@@ -355,22 +365,22 @@ export default function ChatPage() {
       </div>
 
       {/* ── Input bar ────────────────────────────────────────────────────── */}
-      <div className="border border-[#2A2A2A] border-t-0 bg-[#0D0D0D] shrink-0">
+      <div className="rounded-b-2xl shrink-0" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}`, borderTop: "none" }}>
         {/* Hint strip */}
-        <div className="px-4 py-1 border-b border-[#1A1A1A] flex items-center gap-3">
-          <span className="text-[#555] text-[9px] tracking-wider">
+        <div className="px-4 py-1.5 flex items-center gap-3" style={{ borderBottom: `1px solid ${BORDER}` }}>
+          <span className="text-[9px] tracking-wide" style={{ color: MUTED }}>
             ENTER to send · SHIFT+ENTER for new line
           </span>
           {streaming && (
             <>
-              <span className="text-[#3A3A3A]">│</span>
+              <span style={{ color: BORDER }}>│</span>
               {streamingToolCalls.length > 0 && streamBuf.current === "" ? (
-                <span className="text-[#F5821F] text-[9px] tracking-wider animate-pulse">
-                  ● CALLING: {streamingToolCalls[streamingToolCalls.length - 1].replace(/_/g, "_").toUpperCase()}
+                <span className="text-[9px] tracking-wide animate-pulse" style={{ color: GOLD }}>
+                  ● Calling: {streamingToolCalls[streamingToolCalls.length - 1].replace(/_/g, " ").toUpperCase()}
                 </span>
               ) : (
-                <span className="text-[#F5821F] text-[9px] tracking-wider animate-pulse">
-                  ● GENERATING...
+                <span className="text-[9px] tracking-wide animate-pulse" style={{ color: GOLD }}>
+                  ● Generating...
                 </span>
               )}
             </>
@@ -379,7 +389,7 @@ export default function ChatPage() {
 
         <div className="flex items-end gap-0">
           {/* Prompt prefix */}
-          <span className="text-[#F5821F] text-[11px] font-bold px-3 pb-3 pt-2.5 shrink-0 self-end">
+          <span className="text-[12px] font-bold px-3 pb-3 pt-2.5 shrink-0 self-end" style={{ color: GOLD }}>
             &gt;
           </span>
 
@@ -398,8 +408,8 @@ export default function ChatPage() {
                 : "Select a portfolio first"
             }
             rows={1}
-            className="flex-1 bg-transparent text-[#E0E0E0] text-[11px] placeholder-[#444] resize-none py-2.5 pr-2 focus:outline-none leading-5 tracking-wide"
-            style={{ minHeight: "40px", maxHeight: "120px" }}
+            className="flex-1 bg-transparent text-[12px] resize-none py-2.5 pr-2 focus:outline-none leading-5 tracking-wide"
+            style={{ minHeight: "40px", maxHeight: "120px", color: WHITE }}
             onInput={e => {
               const t = e.currentTarget;
               t.style.height = "auto";
@@ -411,9 +421,13 @@ export default function ChatPage() {
           <button
             onClick={() => sendMessage(input)}
             disabled={streaming || !input.trim() || !selectedId}
-            className="shrink-0 px-4 py-2.5 self-end mb-0 bg-[#F5821F] text-black hover:bg-[#FFB300] disabled:bg-[#2A2A2A] disabled:text-[#555] transition-colors"
+            className="shrink-0 px-4 py-2.5 self-end mb-0 rounded-br-2xl transition-colors disabled:cursor-not-allowed"
+            style={{
+              background: streaming || !input.trim() || !selectedId ? "rgba(255,255,255,0.06)" : GOLD,
+              color: streaming || !input.trim() || !selectedId ? MUTED : "#000",
+            }}
           >
-            <Send size={13} />
+            <Send size={14} />
           </button>
         </div>
       </div>

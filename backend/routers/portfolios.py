@@ -43,6 +43,17 @@ def get_portfolios(
     return portfolios
 
 
+@router.get("/stats/securities-count")
+def get_securities_count(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Count of distinct securities currently held across the portfolios the
+    current user can see (all of them for admin, own book for a fund manager)."""
+    count = scope_portfolio_query(
+        db.query(Position.security_id).join(Portfolio, Position.portfolio_id == Portfolio.portfolio_id),
+        current_user,
+    ).distinct().count()
+    return {"distinct_securities": count}
+
+
 @router.get("/{portfolio_id}", response_model=PortfolioDetailsResponse)
 def get_portfolio(portfolio: Portfolio = Depends(require_portfolio_access), db: Session = Depends(get_db)):
     """Get detailed portfolio information"""

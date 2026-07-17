@@ -79,6 +79,9 @@ export const getCurrentUser = () =>
 export const getPortfolios = () =>
   apiFetch<Portfolio[]>("/api/portfolios?limit=100");
 
+export const getSecuritiesCount = () =>
+  apiFetch<{ distinct_securities: number }>("/api/portfolios/stats/securities-count");
+
 export const getPortfolio = (id: number) =>
   apiFetch<PortfolioDetail>(`/api/portfolios/${id}`);
 

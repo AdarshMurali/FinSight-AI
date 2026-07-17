@@ -7,6 +7,7 @@ import SectionHeader from "@/components/SectionHeader";
 import { SmartText, RagSources, CostTag } from "@/components/AiTextRenderer";
 import { Radio, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { manrope, GOLD, WHITE, MUTED, GREEN, RED, NEAR_BLACK, BORDER } from "@/lib/theme";
 
 function impactBadge(level: string | null) {
   if (!level) return null;
@@ -66,7 +67,7 @@ export default function MarketEventDetail() {
   }
 
   if (loading) return <LoadingSpinner label="Loading event..." />;
-  if (!event) return <p className="text-[#FF4040] text-sm font-mono">Event not found.</p>;
+  if (!event) return <p className={`text-sm ${manrope.className}`} style={{ color: RED }}>Event not found.</p>;
 
   let sectors: string[] = [];
   let regions: string[] = [];
@@ -74,57 +75,57 @@ export default function MarketEventDetail() {
   try { regions = JSON.parse(event.affected_regions || "[]"); } catch {}
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 font-mono">
+    <div className={`max-w-4xl mx-auto space-y-4 ${manrope.className}`}>
       {/* Header */}
-      <div className="border-b border-[#2A2A2A] pb-4">
+      <div className="pb-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
         <div className="flex items-center gap-2 mb-2">
-          <Radio size={16} className="text-[#FFB300]" />
+          <Radio size={16} style={{ color: GOLD }} />
           <span className="badge badge-blue">{event.event_type}</span>
           {impactBadge(event.impact_level)}
         </div>
-        <h1 className="text-[#E0E0E0] text-lg font-bold tracking-wider">{event.event_title?.toUpperCase()}</h1>
-        <p className="text-[#888] text-[10px] mt-1 tracking-wider">{event.event_date?.slice(0, 10)}</p>
+        <h1 className="text-[19px] font-bold" style={{ color: WHITE }}>{event.event_title}</h1>
+        <p className="text-[11px] mt-1 tracking-wide" style={{ color: MUTED }}>{event.event_date?.slice(0, 10)}</p>
       </div>
 
       {/* Description */}
       {event.event_description && (
-        <div className="border border-[#2A2A2A] bg-[#0D0D0D]">
+        <div className="rounded-2xl overflow-hidden" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
           <SectionHeader title="Event Summary" />
           <div className="px-4 py-4">
-            <p className="text-[#AAA] text-sm leading-6">{event.event_description}</p>
+            <p className="text-sm leading-6" style={{ color: MUTED }}>{event.event_description}</p>
           </div>
         </div>
       )}
 
       {/* Metadata */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="border border-[#2A2A2A] bg-[#0D0D0D]">
+        <div className="rounded-2xl overflow-hidden" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
           <SectionHeader title="Affected Sectors" />
           <div className="px-4 py-4">
             {sectors.length ? (
               <div className="flex flex-wrap gap-2">
                 {sectors.map(s => <span key={s} className="badge badge-yellow">{s}</span>)}
               </div>
-            ) : <p className="text-[#555] text-xs">None specified</p>}
+            ) : <p className="text-xs" style={{ color: MUTED }}>None specified</p>}
           </div>
         </div>
-        <div className="border border-[#2A2A2A] bg-[#0D0D0D]">
+        <div className="rounded-2xl overflow-hidden" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
           <SectionHeader title="Affected Regions" />
           <div className="px-4 py-4">
             {regions.length ? (
               <div className="flex flex-wrap gap-2">
                 {regions.map(r => <span key={r} className="badge badge-blue">{r}</span>)}
               </div>
-            ) : <p className="text-[#555] text-xs">None specified</p>}
+            ) : <p className="text-xs" style={{ color: MUTED }}>None specified</p>}
           </div>
         </div>
       </div>
 
       {/* Affected portfolios */}
-      <div className="border border-[#2A2A2A] bg-[#0D0D0D]">
-        <SectionHeader title="Affected Portfolios" sub={`${affected.length} PORTFOLIOS WITH RELATED POSITION CHANGES`} />
+      <div className="rounded-2xl overflow-hidden" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
+        <SectionHeader title="Affected Portfolios" sub={`${affected.length} portfolios with related position changes`} />
         {affected.length === 0 ? (
-          <p className="text-[#555] text-xs p-4">No portfolios with linked position changes.</p>
+          <p className="text-xs p-4" style={{ color: MUTED }}>No portfolios with linked position changes.</p>
         ) : (
           <table>
             <thead>
@@ -138,19 +139,20 @@ export default function MarketEventDetail() {
             <tbody>
               {affected.map(a => (
                 <tr key={a.portfolio_id}>
-                  <td className="text-[#E0E0E0] font-medium text-xs">{a.portfolio_name}</td>
-                  <td className="text-right text-[#888]">{a.changes_count}</td>
-                  <td className={`text-right font-medium ${a.total_weight_change >= 0 ? "positive" : "negative"}`}>
+                  <td className="font-medium text-xs" style={{ color: WHITE }}>{a.portfolio_name}</td>
+                  <td className="text-right" style={{ color: MUTED }}>{a.changes_count}</td>
+                  <td className="text-right font-medium" style={{ color: a.total_weight_change >= 0 ? GREEN : RED }}>
                     {a.total_weight_change >= 0 ? "+" : ""}{(a.total_weight_change * 100).toFixed(2)}%
                   </td>
                   <td className="text-right whitespace-nowrap">
-                    <Link href={`/portfolios/${a.portfolio_id}`} className="text-[#F5821F] hover:text-[#FFA040] transition-colors text-xs mr-3">
+                    <Link href={`/portfolios/${a.portfolio_id}`} className="transition-colors text-xs mr-3" style={{ color: GOLD }}>
                       View portfolio
                     </Link>
                     <button
                       onClick={() => handleAnalyze(a.portfolio_id)}
                       disabled={analyzingId === a.portfolio_id}
-                      className="inline-flex items-center gap-1 text-[#00CC44] hover:text-[#33FF77] transition-colors text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="inline-flex items-center gap-1 transition-colors text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ color: GOLD }}
                     >
                       <Sparkles size={11} />
                       {analyzingId === a.portfolio_id ? "Analyzing…" : analyses[a.portfolio_id] ? "Re-analyze" : "Analyze impact"}
@@ -166,15 +168,16 @@ export default function MarketEventDetail() {
       {/* Analyze any portfolio's exposure — independent of auto-detected "affected" list,
           since exposure detection requires the event to have tagged sectors/regions,
           which many events (like this one) don't have. */}
-      <div className="border border-[#2A2A2A] bg-[#0D0D0D]">
-        <SectionHeader title="AI Event Impact Analysis" sub="ANALYZE ANY PORTFOLIO'S EXPOSURE TO THIS EVENT" />
+      <div className="rounded-2xl overflow-hidden" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
+        <SectionHeader title="AI Event Impact Analysis" sub="analyze any portfolio's exposure to this event" />
         <div className="p-4 flex items-end gap-4">
           <div className="flex-1">
-            <label className="text-[#888] text-[10px] uppercase tracking-wider block mb-2">Portfolio</label>
+            <label className="text-[10px] uppercase tracking-wide block mb-2" style={{ color: MUTED }}>Portfolio</label>
             <select
               value={selectedPortfolioId}
               onChange={e => setSelectedPortfolioId(Number(e.target.value))}
-              className="w-full bg-black border border-[#2A2A2A] text-[#E0E0E0] text-xs px-3 py-2 focus:outline-none focus:border-[#F5821F] transition-colors"
+              className="w-full text-xs px-3 py-2.5 rounded-lg focus:outline-none transition-colors"
+              style={{ background: "#000", border: `1px solid ${BORDER}`, color: WHITE }}
             >
               {portfolios.map(p => (
                 <option key={p.portfolio_id} value={p.portfolio_id}>
@@ -186,7 +189,8 @@ export default function MarketEventDetail() {
           <button
             onClick={() => handleAnalyze(selectedPortfolioId)}
             disabled={analyzingId === selectedPortfolioId || !selectedPortfolioId}
-            className="flex items-center gap-2 px-5 py-2 bg-[#F5821F] text-black text-xs font-bold tracking-wider uppercase hover:bg-[#FFB300] transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full text-black text-xs font-bold tracking-wide uppercase transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            style={{ background: GOLD }}
           >
             <Sparkles size={13} />
             {analyzingId === selectedPortfolioId ? "Analyzing…" : "Analyze impact"}
@@ -199,7 +203,7 @@ export default function MarketEventDetail() {
         const result = analyses[pid];
         const err = analysisErrors[pid];
         return (
-          <div key={pid} className="border border-[#2A2A2A] bg-[#0D0D0D]">
+          <div key={pid} className="rounded-2xl overflow-hidden" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
             <SectionHeader
               title="AI Event Impact Analysis"
               sub={`${portfolioNameById.get(pid) ?? `Portfolio #${pid}`} · GPT-4o mini`}
@@ -207,11 +211,11 @@ export default function MarketEventDetail() {
             />
             <div className="px-4 py-4 space-y-3">
               {err ? (
-                <p className="text-[#FF4040] text-xs">{err}</p>
+                <p className="text-xs" style={{ color: RED }}>{err}</p>
               ) : (
                 <>
-                  <div className="border-l-2 border-[#00CC44]/40 pl-4">
-                    <SmartText text={result!.ai_assessment} bulletColor="bg-[#00CC44]" />
+                  <div className="pl-4" style={{ borderLeft: `2px solid ${GOLD}4d` }}>
+                    <SmartText text={result!.ai_assessment} bulletColor="bg-[#fabd49]" />
                   </div>
                   <RagSources sources={result!.rag_sources} />
                 </>
@@ -222,9 +226,9 @@ export default function MarketEventDetail() {
       })}
 
       {event.source_url && (
-        <p className="text-[#555] text-xs">
+        <p className="text-xs" style={{ color: MUTED }}>
           Source:{" "}
-          <a href={event.source_url} target="_blank" rel="noopener noreferrer" className="text-[#F5821F] hover:text-[#FFA040] transition-colors">
+          <a href={event.source_url} target="_blank" rel="noopener noreferrer" className="transition-colors" style={{ color: GOLD }}>
             {event.source_url}
           </a>
         </p>
