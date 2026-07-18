@@ -90,6 +90,7 @@ services:
       CHROMA_PORT: "8001"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+      AWS_REGION: ap-south-1
     env_file:
       - .env
     volumes:
@@ -120,6 +121,7 @@ services:
       CHROMA_PORT: "8001"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+      AWS_REGION: ap-south-1
     env_file:
       - .env
     volumes:

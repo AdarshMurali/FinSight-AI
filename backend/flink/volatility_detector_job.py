@@ -2,9 +2,16 @@
 PyFlink Job: Real-Time Volatility Detector
 ===========================================
 Reads live trades from Kafka topic 'market.trades', applies a 5-minute
-tumbling window per symbol, detects price moves > 1.5% or volume spikes
-> 2x rolling average, and writes volatility event documents to ChromaDB
+tumbling window per symbol, detects price moves or volume spikes past
+configurable thresholds, and writes volatility event documents to ChromaDB
 'volatility_events' collection.
+
+Thresholds are read from SSM Parameter Store (/finsight/volatility_*) and
+re-polled every SSM_REFRESH_SECONDS while the job runs, so they can be
+tuned without a redeploy. Falls back to the DEFAULT_* constants below --
+silently, logging once per refresh attempt -- if SSM is unreachable or the
+IAM permission isn't present (e.g. running locally without an instance
+profile), so a Parameter Store hiccup never takes the whole stream down.
 
 Submit from inside the Flink container:
     docker exec finsight-flink-jobmanager \
@@ -15,6 +22,7 @@ Runs continuously (streaming mode).
 
 import os
 import json
+import time
 import hashlib
 from datetime import datetime, timezone
 
@@ -39,8 +47,18 @@ CHROMA_PORT     = int(os.getenv("CHROMA_PORT", "8001"))
 OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY", "")
 COLLECTION_NAME = "volatility_events"
 
-PRICE_MOVE_THRESHOLD_PCT  = 1.5   # Flag if price moves >1.5% in 5-min window
-VOLUME_SPIKE_MULTIPLIER   = 2.0   # Flag if volume > 2x average
+AWS_REGION      = os.getenv("AWS_REGION", "ap-south-1")
+
+# Used only if SSM is unreachable (no instance-profile permission, local dev
+# without AWS creds, transient API error) -- same values as the original
+# hardcoded thresholds.
+DEFAULT_PRICE_MOVE_THRESHOLD_PCT = 1.5   # Flag if price moves >1.5% in 5-min window
+DEFAULT_VOLUME_SPIKE_MULTIPLIER  = 2.0   # Flag if volume > 2x average
+
+SSM_PARAM_PRICE_THRESHOLD  = "/finsight/volatility_price_threshold_pct"
+SSM_PARAM_VOLUME_MULTIPLIER = "/finsight/volatility_volume_spike_multiplier"
+SSM_REFRESH_SECONDS         = int(os.getenv("SSM_REFRESH_SECONDS", "300"))
+
 WINDOW_MINUTES            = 5
 
 
@@ -105,8 +123,43 @@ class VolatilityEventSink(MapFunction):
         )
         self.avg_volumes: dict[str, float] = {}  # rolling avg volume per symbol
 
+        try:
+            import boto3
+            self.ssm = boto3.client("ssm", region_name=AWS_REGION)
+        except Exception as e:
+            print(f"[WARN] boto3/SSM client unavailable, using default thresholds only: {e}")
+            self.ssm = None
+
+        self.price_threshold  = DEFAULT_PRICE_MOVE_THRESHOLD_PCT
+        self.volume_multiplier = DEFAULT_VOLUME_SPIKE_MULTIPLIER
+        self._last_threshold_refresh = 0.0
+        self._refresh_thresholds()
+
+    def _refresh_thresholds(self):
+        """Best-effort pull of both thresholds from SSM. Keeps last-known-good
+        values on any failure -- a stream job should degrade, not crash, on a
+        transient Parameter Store error."""
+        self._last_threshold_refresh = time.time()
+        if self.ssm is None:
+            return
+        try:
+            self.price_threshold = float(
+                self.ssm.get_parameter(Name=SSM_PARAM_PRICE_THRESHOLD)["Parameter"]["Value"]
+            )
+            self.volume_multiplier = float(
+                self.ssm.get_parameter(Name=SSM_PARAM_VOLUME_MULTIPLIER)["Parameter"]["Value"]
+            )
+        except Exception as e:
+            print(
+                f"[WARN] SSM threshold refresh failed, keeping price={self.price_threshold} "
+                f"volume={self.volume_multiplier}: {e}"
+            )
+
     def map(self, window_data: dict) -> str:
         try:
+            if time.time() - self._last_threshold_refresh >= SSM_REFRESH_SECONDS:
+                self._refresh_thresholds()
+
             symbol       = window_data.get("symbol", "")
             open_price   = window_data.get("open_price", 0.0)
             close_price  = window_data.get("close_price", 0.0)
@@ -129,8 +182,8 @@ class VolatilityEventSink(MapFunction):
             volume_ratio = total_volume / avg_vol if avg_vol > 0 else 1.0
 
             # Detect volatility
-            price_spike  = abs(price_move_pct) >= PRICE_MOVE_THRESHOLD_PCT
-            volume_spike = volume_ratio >= VOLUME_SPIKE_MULTIPLIER
+            price_spike  = abs(price_move_pct) >= self.price_threshold
+            volume_spike = volume_ratio >= self.volume_multiplier
 
             if not (price_spike or volume_spike):
                 return f"NORMAL:{symbol}:{price_move_pct:.2f}%"

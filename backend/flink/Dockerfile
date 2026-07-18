@@ -17,4 +17,5 @@ RUN pip3 install --no-cache-dir \
     openai>=1.40.0 \
     vaderSentiment==3.3.2 \
     python-dotenv==1.0.1 \
-    requests==2.32.3
+    requests==2.32.3 \
+    boto3>=1.34.0
