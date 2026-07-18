@@ -62,6 +62,82 @@ _ROUNDUP_PATTERNS = [
     r"acquires?\s+\$[\d,.]+[kmb]?\s+in\b",
 ]
 
+# Broad/world news (Finnhub "general" category) -> geopolitical / regulatory /
+# policy. Separate from _KEYWORD_RULES above since these headlines have no
+# single ticker to disambiguate against, so patterns here are written to be
+# unambiguous on their own — same precision-over-recall philosophy as above.
+_GENERAL_KEYWORD_RULES = [
+    # geopolitical — sanctions, diplomatic/military crisis not already covered
+    # by the actor+verb conflict check below (ceasefire/sanctions/martial law
+    # are unambiguous enough on their own to not need a named actor)
+    (r"\bceasefire\b", "geopolitical", "positive"),
+    (r"\bimposes?\s+(new\s+)?sanctions\b", "geopolitical", "negative"),
+    (r"\bmartial law\b", "geopolitical", "negative"),
+    (r"\bnuclear\s+(talks|deal|threat)\b", "geopolitical", "neutral"),
+    (r"\btroops?\s+(mobiliz\w*|deployed)\b", "geopolitical", "negative"),
+    (r"\bcoup\b", "geopolitical", "negative"),
+    # regulatory — enforcement / compliance actions against companies
+    (r"\bsec\s+(charges|fines|sues|investigat\w*)\b", "regulatory", "negative"),
+    (r"\bftc\s+(sues|blocks|investigat\w*)\b", "regulatory", "negative"),
+    (r"\bantitrust\s+(probe|lawsuit|investigation|case)\b", "regulatory", "negative"),
+    (r"\bregulators?\s+(block|reject)\b", "regulatory", "negative"),
+    (r"\bregulators?\s+approve[sd]?\b", "regulatory", "positive"),
+    (r"\bfined\s+\$[\d,.]+\s?(million|billion|[kmb])\b", "regulatory", "negative"),
+    # policy — trade/fiscal/legislative (Fed rate moves have their own source, ingest_fomc)
+    (r"\btariffs?\s+(on|against)\b", "policy", "negative"),
+    (r"\btrade\s+(deal|truce|agreement)\b", "policy", "positive"),
+    (r"\bexecutive order\b", "policy", "neutral"),
+    (r"\bsigns?\b.*\binto law\b", "policy", "neutral"),
+]
+
+# Lightweight keyword -> region tagging for general news (no ticker/country to
+# fall back on the way company-news has via Security.country).
+_REGION_KEYWORDS = [
+    (r"\b(iran|israel|gaza|lebanon|syria|hezbollah|hamas|saudi arabia|yemen|houthi)\b", "Middle East"),
+    (r"\b(russia|ukraine|moscow|kremlin|kyiv)\b", "Eastern Europe"),
+    (r"\b(china|taiwan|beijing|hong kong)\b", "East Asia"),
+    (r"\b(north korea|south korea|pyongyang)\b", "Korean Peninsula"),
+    (r"\b(india|pakistan)\b", "South Asia"),
+    (r"\b(european union|\beu\b|brussels|germany|france|\buk\b|britain)\b", "Europe"),
+    (r"\b(united states|u\.s\.|washington|white house|congress|federal reserve)\b", "United States"),
+]
+
+# A conflict verb ("strikes", "attacks", "invades"...) co-occurring with a
+# named actor/region is a far more reliable geopolitical signal than either
+# alone — catches real coverage ("US strikes on Iran", "Israeli strikes kill
+# Palestinians", "Iran renews attacks") without tripping on metaphors that
+# share the vocabulary but never name an actual country ("AI talent war",
+# "price war", "bidding war"). A fixed-phrase list alone missed real, current
+# war coverage during testing (2026-07-18) for exactly this reason.
+_CONFLICT_VERBS_RE = re.compile(r"\b(strikes?|attacks?|invades?|invasion|bombards?|shells?|airstrikes?)\b")
+_CONFLICT_ACTORS_RE = re.compile(
+    r"\b(iran|israel|gaza|lebanon|syria|hezbollah|hamas|yemen|houthi|russia|ukraine|"
+    r"china|taiwan|north korea|pakistan|india|saudi arabia)\b"
+)
+
+
+def classify_general_headline(headline: str) -> Optional[dict]:
+    """Keyword-match a general/world news headline into geopolitical /
+    regulatory / policy — the counterpart to classify_headline() above, but
+    for Finnhub's broad "general" news category. Heuristic, not NLP —
+    precision over recall by design (see _GENERAL_KEYWORD_RULES)."""
+    text = headline.lower()
+
+    if _CONFLICT_VERBS_RE.search(text) and _CONFLICT_ACTORS_RE.search(text):
+        return {"event_type": "geopolitical", "sentiment": "negative"}
+
+    for pattern, event_type, sentiment in _GENERAL_KEYWORD_RULES:
+        if re.search(pattern, text):
+            return {"event_type": event_type, "sentiment": sentiment}
+    return None
+
+
+def detect_region(text: str) -> str:
+    for pattern, region in _REGION_KEYWORDS:
+        if re.search(pattern, text):
+            return region
+    return "Global"
+
 
 def classify_headline(headline: str, ticker: str, company_name: Optional[str] = None) -> Optional[dict]:
     """Keyword-match a news headline into an event_type/sentiment pair, or None
@@ -445,6 +521,69 @@ def ingest_news_keywords(db: Session, tags: dict, start: datetime, end: datetime
     return created
 
 
+# ── Geopolitical / regulatory / policy (Finnhub general news, keyword-matched) ─
+# Broad world/market news category — unlike company-news this isn't scoped to
+# a ticker, so events here apply market-wide (all_sectors) rather than to one
+# security. Same free-tier recency limits as ingest_news_keywords (recent
+# articles only, no deep archive) — this source is about catching NEW events
+# going forward as they happen, not backfilling past history.
+
+def ingest_general_news(db: Session, tags: dict, start: datetime, end: datetime, dry_run: bool) -> int:
+    import requests
+
+    finnhub_key = os.environ.get("FINNHUB_API_KEY")
+    if not finnhub_key:
+        logger.warning("[MarketEvents/General] FINNHUB_API_KEY not set — skipping")
+        return 0
+
+    all_sectors = tags["all_sectors"]
+    try:
+        r = requests.get(
+            "https://finnhub.io/api/v1/news",
+            params={"category": "general", "token": finnhub_key},
+            timeout=15,
+        )
+        r.raise_for_status()
+        articles = r.json()
+    except Exception as e:
+        logger.warning(f"[MarketEvents/General] fetch failed ({e})")
+        return 0
+
+    created = 0
+    for article in articles:
+        headline = article.get("headline", "")
+        classified = classify_general_headline(headline)
+        if not classified:
+            continue
+
+        event_date = datetime.utcfromtimestamp(article["datetime"])
+        if not (start <= event_date <= end):
+            continue
+
+        title = headline[:300]
+        source_url = article.get("url")
+        if event_exists(db, classified["event_type"], title, event_date):
+            continue
+        if event_exists_by_source_url(db, classified["event_type"], source_url):
+            continue  # same article already filed (general news can repeat across pages)
+
+        summary = article.get("summary") or ""
+        region = detect_region(f"{headline} {summary}".lower())
+        impact = "high" if classified["event_type"] == "geopolitical" else "medium"
+        ev = build_event(
+            event_date=event_date, event_type=classified["event_type"], title=title,
+            description=summary or headline,
+            sectors=all_sectors, regions=[region],
+            impact_level=impact, sentiment=classified["sentiment"],
+            source_url=source_url,
+        )
+        _save(db, ev, dry_run)
+        created += 1
+        logger.info(f"[MarketEvents/General] {'[dry-run] ' if dry_run else ''}[{classified['event_type']}] {title}")
+
+    return created
+
+
 def ingest_all(db: Session, start: datetime, end: datetime, dry_run: bool = False) -> dict:
     """Run every source over [start, end]. Returns a dict of per-source counts."""
     tags = load_security_tags(db)
@@ -454,4 +593,5 @@ def ingest_all(db: Session, start: datetime, end: datetime, dry_run: bool = Fals
         "macro":    ingest_macro(db, tags, start, end, dry_run),
         "fomc":     ingest_fomc(db, tags, start, end, dry_run),
         "news":     ingest_news_keywords(db, tags, start, end, dry_run),
+        "general":  ingest_general_news(db, tags, start, end, dry_run),
     }

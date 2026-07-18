@@ -1,6 +1,7 @@
 """
 Recurring weekly Market_Events refresh job — keeps the table current going
-forward (earnings, macro/CPI/jobs, FOMC decisions, M&A/guidance-cuts/downgrades).
+forward (earnings, macro/CPI/jobs, FOMC decisions, M&A/guidance-cuts/downgrades,
+geopolitical/regulatory/policy news from Finnhub's general category).
 
 Scheduled via AWS EventBridge + SSM Run Command on the backend EC2
 (13.206.225.80, always-on), same pattern as risk_job.py / price_update_job.py,
@@ -67,7 +68,8 @@ def run():
         logger.info(
             f"[MarketEventsJob] Complete — window {start.date()}..{end.date()} — "
             f"{counts['earnings']} earnings, {counts['macro']} macro, "
-            f"{counts['fomc']} FOMC, {counts['news']} news-keyword events"
+            f"{counts['fomc']} FOMC, {counts['news']} news-keyword events, "
+            f"{counts['general']} geopolitical/regulatory/policy events"
         )
     finally:
         db.close()
