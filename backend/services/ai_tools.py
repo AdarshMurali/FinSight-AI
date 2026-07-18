@@ -116,6 +116,16 @@ TOOL_DEFINITIONS = [
                         "type": "integer",
                         "description": "Number of results to return. Default: 8.",
                     },
+                    "ticker": {
+                        "type": "string",
+                        "description": (
+                            "Stock ticker to scope the search to, e.g. 'AAPL'. "
+                            "Always set this when the user's question is about a specific "
+                            "company — otherwise the search can surface same-shaped results "
+                            "(e.g. volatility events) for unrelated tickers that just happen "
+                            "to score well on recency."
+                        ),
+                    },
                 },
                 "required": ["query"],
             },
@@ -313,7 +323,9 @@ def execute_tool(name: str, arguments: dict, db: Session, current_user: User) ->
         try:
             rag = _get_rag()
             n = int(arguments.get("n_results", 8))
-            results = rag.retrieve_context(arguments["query"], n_results=n)
+            results = rag.retrieve_context(
+                arguments["query"], n_results=n, ticker=arguments.get("ticker")
+            )
             return [
                 {
                     "collection": r["collection"],

@@ -51,13 +51,23 @@ class MarketRAGEngine:
             "earnings_data", "analyst_recommendations",
         ]
     
-    def retrieve_context(self, query: str, n_results: int = 5) -> list[dict]:
-        """Semantic search across all collections."""
+    def retrieve_context(self, query: str, n_results: int = 5, ticker: str | None = None) -> list[dict]:
+        """Semantic search across all collections.
+
+        When `ticker` is given, hard-filters each collection to that ticker's
+        metadata before ranking — otherwise generic queries ("why did AAPL move")
+        can pull in same-shaped docs for unrelated tickers (e.g. AXP, ADBE) that
+        merely embed close to the query template and win on recency, not relevance.
+        Collections without a `ticker` metadata field (market_news, macro_indicators,
+        fed_communications, analyst_research, earnings_filings) just return no rows
+        for the filtered query and are silently skipped, same as any other empty result.
+        """
         query_embedding = self.openai.embeddings.create(
             model="text-embedding-3-small",
             input=query
         ).data[0].embedding
-        
+        where = {"ticker": ticker.upper()} if ticker else None
+
         all_results = []
         for coll_name in self.collections:
             try:
@@ -65,6 +75,7 @@ class MarketRAGEngine:
                 results = coll.query(
                     query_embeddings=[query_embedding],
                     n_results=min(n_results, 3),
+                    where=where,
                     include=["documents", "metadatas", "distances"]
                 )
                 for doc, meta, dist in zip(
@@ -89,9 +100,9 @@ class MarketRAGEngine:
         # Sort by blended relevance+recency score, return top-K
         return sorted(all_results, key=lambda x: x["final_score"], reverse=True)[:n_results * 2]
     
-    def build_context_prompt(self, query: str) -> str:
+    def build_context_prompt(self, query: str, ticker: str | None = None) -> str:
         """Build RAG-enhanced prompt for LLM."""
-        docs = self.retrieve_context(query, n_results=10)
+        docs = self.retrieve_context(query, n_results=10, ticker=ticker)
         
         context_blocks = []
         for i, doc in enumerate(docs, 1):
