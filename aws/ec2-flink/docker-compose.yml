@@ -91,6 +91,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       FINNHUB_API_KEY: ${FINNHUB_API_KEY}
       AWS_REGION: ap-south-1
+      USE_AWS_SECRETS: "true"
     env_file:
       - .env
     volumes:
@@ -122,6 +123,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       FINNHUB_API_KEY: ${FINNHUB_API_KEY}
       AWS_REGION: ap-south-1
+      USE_AWS_SECRETS: "true"
     env_file:
       - .env
     volumes:
@@ -146,6 +148,8 @@ services:
     command: ["python", "-u", "finnhub_trade_producer.py"]
     environment:
       KAFKA_MODE: docker
+      AWS_REGION: ap-south-1
+      USE_AWS_SECRETS: "true"
     env_file:
       - .env
     depends_on:
@@ -163,6 +167,8 @@ services:
     command: ["python", "-u", "finnhub_news_producer.py"]
     environment:
       KAFKA_MODE: docker
+      AWS_REGION: ap-south-1
+      USE_AWS_SECRETS: "true"
     env_file:
       - .env
     depends_on:

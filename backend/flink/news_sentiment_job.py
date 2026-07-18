@@ -34,6 +34,9 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from openai import OpenAI
 import chromadb
 
+from secrets_loader import load_aws_secrets
+load_aws_secrets()
+
 # ── Config (env vars injected via docker-compose env_file) ───────────────
 KAFKA_BROKERS    = os.getenv("KAFKA_BROKERS", "kafka:29092")
 CHROMA_HOST      = os.getenv("CHROMA_HOST",   "host.docker.internal")

@@ -60,6 +60,12 @@ _backend_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _backend_dir)
 sys.path.insert(0, os.path.join(_backend_dir, "rag"))
 
+# USE_AWS_SECRETS=true is already set in this container's docker-compose env,
+# but nothing was calling the loader -- FINSIGHT_MCP_TOKEN was silently only
+# ever coming from a plaintext env var. Load before anything below reads it.
+from services.secrets_loader import load_aws_secrets
+load_aws_secrets()
+
 from mcp.server.fastmcp import FastMCP
 
 from database import SessionLocal

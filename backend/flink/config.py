@@ -3,6 +3,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from secrets_loader import load_aws_secrets
+load_aws_secrets()
+
 # ── Kafka ─────────────────────────────────────────────────────────────────
 # When running natively on Windows, producers connect via localhost:9092.
 # When running inside Docker (Flink jobs), connect via kafka:29092.
