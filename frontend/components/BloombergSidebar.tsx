@@ -3,9 +3,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Manrope } from "next/font/google";
-import { LayoutDashboard, BarChart3, Sparkles, Radio, TrendingUp, MessageSquare, Bell, X, Check, CheckCheck, LogOut } from "lucide-react";
+import { LayoutDashboard, BarChart3, Sparkles, Radio, MessageSquare, Bell, X, Check, CheckCheck, LogOut } from "lucide-react";
 import { getAlerts, getUnreadCount, markAlertRead, markAllAlertsRead, AlertItem } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { LogoTile } from "@/components/Logo";
 
 // ── Bloomberg Professional–inspired variant (see app/home-bloomberg/page.tsx).
 // Font sizes match HdfcSidebar.tsx (the current /home-hdfc, not the v1 snapshot)
@@ -106,11 +107,9 @@ export default function BloombergSidebar() {
         {/* Logo */}
         <div className="px-5 pt-5 pb-4" style={{ borderBottom: "1px solid rgba(250,189,73,0.15)" }}>
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: GOLD }}>
-              <TrendingUp size={18} className="text-black" />
-            </div>
+            <LogoTile size={36} />
             <span className="font-extrabold text-[24px] tracking-tight whitespace-nowrap">
-              <span className="text-white">FinSight</span> <span style={{ color: GOLD }}>AI</span>
+              <span className="text-white">Fin</span><span style={{ color: GOLD }}>Sight</span><span className="text-white"> AI</span>
             </span>
           </div>
           <p className="text-[12px] tracking-wide mt-1.5 pl-11" style={{ color: MUTED }}>

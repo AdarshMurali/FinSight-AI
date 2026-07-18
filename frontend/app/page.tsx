@@ -12,8 +12,9 @@ import {
 import { useWebSocket, WsMessage } from "@/hooks/useWebSocket";
 import {
   ArrowUpRight, ArrowDownRight, ArrowRight, X, Sparkles, Wallet,
-  LayoutGrid, Layers, TrendingUp,
+  LayoutGrid, Layers,
 } from "lucide-react";
+import { LogoMark } from "@/components/Logo";
 
 // ── FinSight AI dashboard — Bloomberg Professional–inspired visual language.
 // Re-themed around Bloomberg's own black→amber→gold gradient (sampled from
@@ -313,8 +314,8 @@ export default function Dashboard() {
               <span style={{ color: GOLD }}>Intelligence</span>
             </h1>
             <p className="text-[16px] mt-2 leading-relaxed" style={{ color: MUTED }}>
-              Monitor risk, track performance, and act on AI-driven insights — all in real time,
-              built for professional fund managers.
+              Monitor risk, run stress tests, track performance, and act on AI-driven insights —
+              all in real time, built for professional fund managers.
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -400,7 +401,7 @@ export default function Dashboard() {
         {/* ── Footer status ────────────────────────────────────────────────── */}
         <div className="flex items-center gap-4 flex-wrap px-1 py-3 text-[11px]" style={{ color: MUTED }}>
           <span className="flex items-center">
-            <TrendingUp size={12} style={{ color: GOLD }} />
+            <LogoMark size={14} />
           </span>
           <span>·</span>
           <span>API {(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/^https?:\/\//, "")}</span>

@@ -1,9 +1,9 @@
 "use client";
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { TrendingUp } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { manrope, GOLD, AMBER_DARK, NEAR_BLACK, WHITE, MUTED, RED, WARNING, BORDER } from "@/lib/theme";
+import { LogoTile } from "@/components/Logo";
 
 const PAGE_GRADIENT = "radial-gradient(ellipse 100% 90% at 100% 100%, #fabd49 0%, #c47c10 20%, #4a2f08 42%, #0a0a0a 68%, #010101 100%)";
 
@@ -41,12 +41,10 @@ export default function LoginPage() {
 
         <div className="px-8 pt-9 pb-6 text-center" style={{ borderBottom: `1px solid ${BORDER}` }}>
           <div className="flex items-center justify-center gap-2 mb-1.5">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: GOLD }}>
-              <TrendingUp size={18} className="text-black" />
-            </div>
+            <LogoTile size={40} />
           </div>
           <p className="font-extrabold text-[22px] tracking-tight">
-            <span style={{ color: WHITE }}>FinSight</span> <span style={{ color: GOLD }}>AI</span>
+            <span style={{ color: WHITE }}>Fin</span><span style={{ color: GOLD }}>Sight</span><span style={{ color: WHITE }}> AI</span>
           </p>
           <p className="text-[11px] tracking-wide mt-1" style={{ color: MUTED }}>
             Portfolio Intelligence Terminal
