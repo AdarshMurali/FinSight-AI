@@ -11,7 +11,7 @@ from sqlalchemy.exc import OperationalError
 
 from config import settings
 from database import test_connection, engine
-from routers import portfolios, securities, market_events, analysis, auth
+from routers import portfolios, securities, market_events, analysis, auth, internal
 from routers.ws import router as ws_router, run_price_simulator, run_kafka_consumer
 from routers.risk import router as risk_router, ensure_table
 from routers.alerts import router as alerts_router, ensure_table as ensure_alerts_table
@@ -90,6 +90,7 @@ app.include_router(analysis.router,      prefix="/api/analysis",      tags=["Ana
 app.include_router(ws_router,            tags=["WebSocket"])          # /ws  (no prefix)
 app.include_router(risk_router,   prefix="/api/risk",   tags=["Risk Analytics"])
 app.include_router(alerts_router, prefix="/api/alerts", tags=["Alerts"])
+app.include_router(internal.router, prefix="/internal", tags=["Internal"])
 
 
 @app.exception_handler(OperationalError)

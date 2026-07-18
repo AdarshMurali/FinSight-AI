@@ -1,4 +1,5 @@
 import os
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -41,7 +42,17 @@ OPENAI_API_KEY       = os.getenv("OPENAI_API_KEY", "")
 EMBEDDING_MODEL      = "text-embedding-3-small"
 
 # ── Covered tickers ──────────────────────────────────────────────────────
-TICKERS = [
+# Sourced from the Securities table (via the backend's /internal/tickers
+# endpoint) so a new security added to the DB is covered automatically --
+# no code change or redeploy needed. Fetched once at process startup;
+# picked up fresh each morning since the Flink EC2 restarts daily around
+# market hours. _FALLBACK_TICKERS is only used if the backend is
+# unreachable at startup (e.g. during initial bring-up before the backend
+# EC2 is deployed), so the producer still starts with *something* rather
+# than crashing outright.
+BACKEND_API_URL = os.getenv("BACKEND_API_URL", "https://api.fin-sightai.space")
+
+_FALLBACK_TICKERS = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "BRK.B",
     "JPM", "JNJ", "V", "WMT", "PG", "MA", "INTC", "NFLX",
     "MCD", "DIS", "KO", "PEP", "ABT", "TMO", "MRK", "IBM",
@@ -50,6 +61,22 @@ TICKERS = [
     "VZ", "T", "TMUS", "DELL", "ORCL", "AMD", "PYPL", "ADBE",
     "AVGO", "INTU",
 ]
+
+
+def _fetch_tickers() -> list[str]:
+    try:
+        resp = requests.get(f"{BACKEND_API_URL}/internal/tickers", timeout=10)
+        resp.raise_for_status()
+        tickers = resp.json()["tickers"]
+        if tickers:
+            return tickers
+        print("[WARN] /internal/tickers returned an empty list, using fallback")
+    except Exception as e:
+        print(f"[WARN] Could not fetch ticker list from backend, using fallback: {e}")
+    return _FALLBACK_TICKERS
+
+
+TICKERS = _fetch_tickers()
 
 # News poll interval in seconds (Finnhub free: 60 req/min across all endpoints)
 NEWS_POLL_INTERVAL_SECONDS = 120
