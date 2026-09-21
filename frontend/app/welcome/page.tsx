@@ -53,13 +53,13 @@ const FEATURES: { icon: React.ComponentType<{ size?: number; style?: React.CSSPr
   },
 ];
 
-const STACK: { group: string; items: string[] }[] = [
-  { group: "AI / LLM", items: ["LLM", "RAG pipeline"] },
-  { group: "Streaming", items: ["Flink stream processing"] },
-  { group: "Backend", items: ["Python", "Azure SQL"] },
-  { group: "Frontend", items: ["Next.js", "React", "Tailwind CSS"] },
-  { group: "Infra", items: ["AWS EC2", "Lambda + EventBridge", "Vercel"] },
-  { group: "CI/CD", items: ["GitHub Actions", "Docker", "human-approved deploys"] },
+// Flat, one-name-per-technology list — no categories, no sub-detail (e.g. "React"
+// covers the whole frontend, not "Next.js, React, Tailwind CSS"; "Stream Processing"
+// not "Kafka + Apache Flink (PyFlink)"). Mirrors how the stack reads on the
+// MarginMaestro side: name the technology, not the whole toolchain behind it.
+const STACK: string[] = [
+  "OpenAI", "RAG Pipeline", "Stream Processing", "Python", "React",
+  "Azure SQL", "AWS", "GitHub Actions",
 ];
 
 function FeatureCard({ icon: Icon, title, body }: (typeof FEATURES)[number]) {
@@ -185,16 +185,15 @@ export default function WelcomePage() {
           <h2 className="text-[12px] font-bold tracking-[0.14em] text-center mb-10" style={{ color: MUTED }}>
             UNDER THE HOOD
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            {STACK.map(s => (
-              <div key={s.group} className="p-4 rounded-xl" style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}` }}>
-                <p className="text-[10px] font-bold tracking-wide mb-2.5" style={{ color: GOLD }}>{s.group.toUpperCase()}</p>
-                <div className="space-y-1">
-                  {s.items.map(i => (
-                    <p key={i} className="text-[11.5px] leading-snug" style={{ color: MUTED }}>{i}</p>
-                  ))}
-                </div>
-              </div>
+          <div className="flex flex-wrap justify-center gap-3 max-w-3xl mx-auto">
+            {STACK.map(name => (
+              <span
+                key={name}
+                className="px-4 py-2 rounded-full text-[12.5px] font-semibold"
+                style={{ background: NEAR_BLACK, border: `1px solid ${BORDER}`, color: WHITE }}
+              >
+                {name}
+              </span>
             ))}
           </div>
         </div>
@@ -223,7 +222,7 @@ export default function WelcomePage() {
             <LogoTile size={16} />
             FinSight AI — a portfolio-intelligence platform built as a systems-engineering showcase
           </span>
-          <span>LLM &middot; RAG pipeline &middot; Flink stream processing &middot; AWS &middot; Azure SQL</span>
+          <span>OpenAI &middot; RAG Pipeline &middot; Stream Processing &middot; Python &middot; React</span>
         </div>
       </div>
     </div>
