@@ -24,7 +24,7 @@ const FEATURES: { icon: React.ComponentType<{ size?: number; style?: React.CSSPr
   {
     icon: MessageSquare,
     title: "Ask it anything — it investigates first",
-    body: "The AI chat doesn't answer from memory. GPT-4o decides which of six tools it needs — portfolio data, position history, market context, live quotes — runs them, then drafts an answer grounded in what it actually found.",
+    body: "The AI chat doesn't answer from memory. The LLM decides which of six tools it needs — portfolio data, position history, market context, live quotes — runs them, then drafts an answer grounded in what it actually found.",
   },
   {
     icon: ShieldCheck,
@@ -34,7 +34,7 @@ const FEATURES: { icon: React.ComponentType<{ size?: number; style?: React.CSSPr
   {
     icon: Radio,
     title: "Live market intelligence",
-    body: "A Kafka + Flink streaming pipeline watches live trade ticks for abnormal volatility, alongside Fed, earnings, and M&A event tracking — so context is current, not last week's snapshot.",
+    body: "A Flink stream-processing pipeline watches live trade ticks for abnormal volatility, alongside Fed, earnings, and M&A event tracking — so context is current, not last week's snapshot.",
   },
   {
     icon: Bell,
@@ -54,9 +54,9 @@ const FEATURES: { icon: React.ComponentType<{ size?: number; style?: React.CSSPr
 ];
 
 const STACK: { group: string; items: string[] }[] = [
-  { group: "AI / LLM", items: ["GPT-4o", "GPT-4o-mini", "text-embedding-3-small", "ChromaDB RAG"] },
-  { group: "Streaming", items: ["Kafka", "Apache Flink (PyFlink)"] },
-  { group: "Backend", items: ["FastAPI", "Python", "Azure SQL"] },
+  { group: "AI / LLM", items: ["LLM", "RAG pipeline"] },
+  { group: "Streaming", items: ["Flink stream processing"] },
+  { group: "Backend", items: ["Python", "Azure SQL"] },
   { group: "Frontend", items: ["Next.js", "React", "Tailwind CSS"] },
   { group: "Infra", items: ["AWS EC2", "Lambda + EventBridge", "Vercel"] },
   { group: "CI/CD", items: ["GitHub Actions", "Docker", "human-approved deploys"] },
@@ -163,7 +163,7 @@ export default function WelcomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {[
               { icon: MessageSquare, step: "1", title: "You ask", body: "“Why did tech exposure drop, and what's driving today's volatility?”" },
-              { icon: Brain, step: "2", title: "GPT-4o decides", body: "It picks which tools it needs — data, risk, live market context — with no fixed script." },
+              { icon: Brain, step: "2", title: "The LLM decides", body: "It picks which tools it needs — data, risk, live market context — with no fixed script." },
               { icon: Wrench, step: "3", title: "It investigates, then answers", body: "Tools run, results feed back in, and the loop repeats until it has enough to answer — with sources cited." },
             ].map(s => (
               <div key={s.step}>
@@ -223,7 +223,7 @@ export default function WelcomePage() {
             <LogoTile size={16} />
             FinSight AI — a portfolio-intelligence platform built as a systems-engineering showcase
           </span>
-          <span>GPT-4o &middot; ChromaDB RAG &middot; Kafka + Flink &middot; AWS &middot; Azure SQL</span>
+          <span>LLM &middot; RAG pipeline &middot; Flink stream processing &middot; AWS &middot; Azure SQL</span>
         </div>
       </div>
     </div>
