@@ -6,7 +6,7 @@
 
 FinSight AI is an AI-powered portfolio-intelligence platform for hedge funds and institutional investors. A fund manager signs in and can: browse their portfolios' positions and performance, ask a conversational AI assistant free-form questions about that portfolio and have it pull live data to answer, see risk analytics (VaR, stress tests, factor exposure), get proactive alerts when risk crosses a threshold or a market event plausibly touches a holding, and export a portfolio report. An admin sees every portfolio in the firm rather than just their own.
 
-Unlike a traditional dashboard, the centerpiece feature — **AI chat** — doesn't run a fixed report. It's agentic: given a question, GPT-4o decides for itself which of six tools to call (portfolio data, position history, market-context search, market events, risk analysis, live quotes), executes them, and only then drafts a grounded answer. See [`docs/architecture/functional-flow.svg`](docs/architecture/functional-flow.svg) for that flow end to end, alongside the second always-on pipeline (volatility detection → risk thresholds → alerts) that runs independently of anyone using the chat.
+Unlike a traditional dashboard, the centerpiece feature — **AI chat** — doesn't run a fixed report. It's agentic: given a question, GPT-4o decides for itself which of six tools to call (portfolio data, position history, market-context search, market events, risk analysis, live quotes), executes them, and only then drafts a grounded answer. See [`docs/architecture/functional-flow.svg`](docs/architecture/functional-flow.svg) for that flow end to end, alongside the two further pipelines that run independently of anyone using the chat: live volatility detection and a pair of daily scheduled jobs (risk metrics, end-of-day data capture). All three of those run on a second EC2 that's currently paused for cost savings — see §5.
 
 ## 2. Users and access
 
@@ -46,7 +46,12 @@ Three kinds, all delivered automatically (no chat interaction required):
 
 A sidebar bell shows an unread count (polled every 60s); alerts also surface inline on the Risk Analytics tab.
 
-### 3.8 MCP server — using FinSight AI from outside the app
+All three depend on the daily risk job and the live volatility-detection pipeline described in §5 — both run on the second, currently-paused EC2. With that instance off, threshold and AI-generated alerts don't get fresh input; this is a cost decision, not a missing feature (see §5 and `ARCHITECTURE.md` §4).
+
+### 3.8 Keeping the data current — daily end-of-day capture
+A separate scheduled job (`price_update_job.py`) pulls each day's OHLCV prices, dividends, splits, and macro indicators (yfinance + FRED) and writes them into Azure SQL and ChromaDB, so the next trading day's dashboards, risk numbers, and AI answers are working from current data rather than a stale snapshot. Like the alert pipeline, this runs on the paused streaming EC2 and is not currently executing — restarting the instance resumes it immediately.
+
+### 3.9 MCP server — using FinSight AI from outside the app
 FinSight AI exposes eight tools (list/summarize portfolios, positions, risk, alerts, market events, RAG search, refresh risk) over an MCP SSE endpoint, so a portfolio manager can query their live data directly from Claude Desktop, Cursor, or VS Code without opening the web app. **Caveat:** the public endpoint authenticates once at startup as a single admin identity, so any MCP client that connects to it currently sees all 50 portfolios, not just one manager's — see `ARCHITECTURE.md` §6 for the full explanation and the workaround (running the server locally in stdio mode with a manager's own token).
 
 ## 4. What's deliberately not there
@@ -58,12 +63,15 @@ Being explicit about scope avoids over-promising:
 - **No Reddit sentiment, no BigQuery analytics layer** — both were designed (see `RAG.md`, `plan.md`) but never built.
 - **Curated, not open-world.** Market-event mapping covers the securities and event types the system actually ingests, not arbitrary open-world news.
 
-## 5. The two dominant runtime flows
+## 5. The three dominant runtime flows
 
-Both are diagrammed in [`docs/architecture/functional-flow.svg`](docs/architecture/functional-flow.svg):
+All three are diagrammed in [`docs/architecture/functional-flow.svg`](docs/architecture/functional-flow.svg):
 
-1. **Agentic AI chat** (§3.5) — triggered by a user question; GPT-4o alone decides what happens next at each step; terminates in a streamed, cited answer.
-2. **Always-on monitoring** — runs continuously regardless of chat usage: live trade ticks and a daily risk job feed threshold checks; a breach either gets logged silently (no catalyst worth surfacing) or triggers an AI catalyst check and lands as a delivered alert.
+1. **Agentic AI chat** (§3.5) — triggered by a user question; GPT-4o alone decides what happens next at each step; terminates in a streamed, cited answer. Runs on the backend EC2, which is always on.
+2. **Live volatility detection** (§3.7) — runs continuously during market hours: live trade ticks feed a Flink windowed aggregation; a breach either gets logged silently (no catalyst worth surfacing) or triggers an AI catalyst check and lands as a delivered alert.
+3. **Daily scheduled jobs** (§3.7, §3.8) — two independent cron-triggered pipelines: `risk_job.py` recomputes VaR/stress/factor exposure and feeds the same threshold-alert engine as flow 2; `price_update_job.py` refreshes the day's OHLCV/dividends/macro data into Azure SQL and ChromaDB.
+
+Flows 2 and 3 both run on the second, streaming EC2 — see [`ARCHITECTURE.md`](ARCHITECTURE.md) §4 for why that instance is currently powered off and how quickly it comes back.
 
 Color-coding on the diagram follows the same convention as the companion MarginMaestro project: **blue** = deterministic code (math, routing, auth), **purple** = LLM (reasoning/RAG/drafting), **teal** = hybrid (code + LLM together). FinSight AI's product pipelines never use MarginMaestro's fourth category, the amber human-approval gate — see §4.
 
