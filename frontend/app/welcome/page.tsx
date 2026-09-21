@@ -59,7 +59,7 @@ const FEATURES: { icon: React.ComponentType<{ size?: number; style?: React.CSSPr
 // MarginMaestro side: name the technology, not the whole toolchain behind it.
 const STACK: string[] = [
   "OpenAI", "RAG Pipeline", "Stream Processing", "Python", "React",
-  "Azure SQL", "Amazon Web Services", "GitHub Actions",
+  "Azure", "Amazon Web Services", "GitHub Actions",
 ];
 
 function FeatureCard({ icon: Icon, title, body }: (typeof FEATURES)[number]) {
