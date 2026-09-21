@@ -114,9 +114,9 @@ export default function WelcomePage() {
           </div>
 
           <h1 className="text-[28px] sm:text-[52px] font-extrabold leading-[1.15] sm:leading-[1.08] tracking-tight mb-5 break-words">
-            <span style={{ color: WHITE }}>Stop skimming spreadsheets.</span>
+            <span style={{ color: WHITE }}>Every question, fully investigated.</span>
             <br />
-            <span style={{ color: GOLD }}>Start interrogating your portfolio.</span>
+            <span style={{ color: GOLD }}>Every answer, fully sourced.</span>
           </h1>
 
           <p className="text-[16px] sm:text-[18px] leading-relaxed mb-9 break-words" style={{ color: MUTED }}>
