@@ -16,17 +16,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLoginPage = pathname === "/login";
+  const isWelcomePage = pathname === "/welcome";
+  // Signed-out visitors land on the public landing page first, not straight
+  // on a bare credential form — /welcome and /login are the only routes that
+  // render without a session.
+  const isPublicPage = isLoginPage || isWelcomePage;
   // The dashboard ("/") keeps the slightly tighter p-4 from its earlier
   // density trim; every other page uses the roomier p-5 it was built against.
   const isDashboard = pathname === "/";
 
   useEffect(() => {
-    if (!loading && !user && !isLoginPage) {
-      router.replace("/login");
+    if (!loading && !user && !isPublicPage) {
+      router.replace("/welcome");
     }
-  }, [loading, user, isLoginPage, router]);
+  }, [loading, user, isPublicPage, router]);
 
-  if (isLoginPage) {
+  if (isPublicPage) {
     return <>{children}</>;
   }
 
