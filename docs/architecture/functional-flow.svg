@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1760" height="1240" viewBox="0 0 1760 1240" font-family="Segoe UI, Arial, sans-serif">
+<title>FinSight AI Functional Flow</title>
+<rect x="0" y="0" width="1760" height="1240" fill="#ffffff"/>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M0,0 L7,3 L0,6 z" fill="#111111"/>
+  </marker>
+</defs>
+<text x="880.0" y="42" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="25" font-weight="700" fill="#1a1a1a">FinSight AI — Functional Flow</text>
+<text x="880.0" y="68" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#6b6b6b">Centerpiece: the agentic AI chat tool-calling loop. GPT-4o decides what to call — it never computes a risk number itself.</text>
+<rect x="47.0" y="170" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#5b5b5b" stroke-width="2"/>
+<g transform="translate(73.0,196.0) scale(1.4167)" fill="#5b5b5b"><path fill="currentColor" d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z"/></g>
+<text x="90" y="268.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">User Question</text>
+<text x="90" y="283.8" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">+ portfolio selected</text>
+<rect x="217.0" y="170" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#7c3aed" stroke-width="2"/>
+<g transform="translate(243.0,196.0) scale(1.4167)" fill="#7c3aed"><path fill="currentColor" d="M13 3.05V1.05C17.39 1.56 21 5.31 21 9.94C21 14.05 18.05 17.5 14.14 18.24L13.62 16.29C16.5 15.61 19 12.94 19 9.94C19 6.5 16.28 3.63 13 3.05M11 3.05V5.06C9.2 5.34 7.63 6.35 6.66 7.82L5.06 6.72C6.36 4.78 8.5 3.44 11 3.05M4.5 9.5L6.19 10.5C6.06 10.97 6 11.47 6 12C6 13.65 6.67 15.15 7.76 16.24L6.34 17.66C4.9 16.22 4 14.21 4 12C4 11.14 4.14 10.3 4.5 9.5M8.76 18.24L9.5 16.42C10.3 16.79 11.13 17 12 17C12.35 17 12.69 16.96 13 16.9L13.54 18.89C13.04 18.96 12.53 19 12 19C10.75 19 9.68 18.72 8.76 18.24Z"/></g>
+<text x="260" y="268.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Tool Selection</text>
+<text x="260" y="283.8" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">GPT-4o picks 0–N tools</text>
+<polygon points="430,178 480,213 430,248 380,213" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+<text x="430" y="218" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Call tool?</text>
+<rect x="557.0" y="170" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#7c3aed" stroke-width="2"/>
+<g transform="translate(583.0,196.0) scale(1.4167)" fill="#7c3aed"><path fill="currentColor" d="M12,3C6.5,3 2,6.58 2,11C2,15.42 6.5,19 12,19C12.6,19 13.19,18.96 13.75,18.88L17.5,21L18,16.62C20.44,15.15 22,12.94 22,11C22,6.58 17.5,3 12,3Z"/></g>
+<text x="600" y="268.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Final Answer</text>
+<text x="600" y="283.8" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">GPT-4o, streamed</text>
+<circle cx="780" cy="213" r="34" fill="#ffffff" stroke="#178a3e" stroke-width="2.2"/>
+<g transform="translate(767,200) scale(1.0833)" fill="#178a3e"><path fill="currentColor" d="M12,2C6.5,2 2,6.5 2,12S6.5,22 12,22S22,17.5 22,12S17.5,2 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z"/></g>
+<text x="780" y="265" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#178a3e">Answer + RAG citations</text>
+<text x="780" y="280" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#178a3e">shown to user</text>
+<line x1="133" y1="213" x2="217" y2="213" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<line x1="303" y1="213" x2="380" y2="213" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<text x="515" y="198" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#2563eb">no</text>
+<line x1="480" y1="213" x2="557" y2="213" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<line x1="643" y1="213" x2="742" y2="213" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<rect x="387.0" y="350" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#2563eb" stroke-width="2"/>
+<g transform="translate(413.0,376.0) scale(1.4167)" fill="#2563eb"><path fill="currentColor" d="M22.7 19L13.6 9.9C14.5 7.6 14 4.9 12.1 3C10.1 1 7.1 0.6 4.7 1.7L9 6L6 9L1.6 4.7C0.4 7.1 0.9 10.1 2.9 12.1C4.8 14 7.5 14.5 9.8 13.6L18.9 22.7C19.3 23.1 19.9 23.1 20.3 22.7L22.6 20.4C23.1 20 23.1 19.3 22.7 19Z"/></g>
+<text x="430" y="448.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Tool Execution</text>
+<text x="430" y="463.8" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">auth-checked (ai_tools.py)</text>
+<rect x="557.0" y="350" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#2563eb" stroke-width="2"/>
+<g transform="translate(583.0,376.0) scale(1.4167)" fill="#2563eb"><path fill="currentColor" d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,19H5V5H19V19M17,12H14.21C14,12.84 13.21,13.5 12.25,13.5C11.29,13.5 10.5,12.84 10.29,12H7L5,15V17H19V15L17,12Z"/></g>
+<text x="600" y="448.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Result Injection</text>
+<text x="600" y="463.8" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">appended to context</text>
+<text x="360" y="198" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#2563eb">yes</text>
+<line x1="430" y1="248" x2="430" y2="350" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<line x1="473" y1="393" x2="557" y2="393" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<line x1="600" y1="350" x2="600" y2="118" stroke="#111111" stroke-width="1.4"/>
+<line x1="600" y1="118" x2="260" y2="118" stroke="#111111" stroke-width="1.4"/>
+<line x1="260" y1="118" x2="260" y2="170" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<text x="470" y="105" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#6b6b6b">iterate ≤ MAX_TOOL_ITERATIONS (code-enforced cap)</text>
+<text x="60" y="525" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#3a3a3a">Live volatility monitoring — independent of chat, runs on the Flink/streaming EC2 during market hours</text>
+<rect x="47.0" y="558" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#5b5b5b" stroke-width="2"/>
+<g transform="translate(73.0,584.0) scale(1.4167)" fill="#5b5b5b"><path fill="currentColor" d="M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,8V18H20V8H4M6,10H16V12H6V10M6,14H13V16H6V14Z"/></g>
+<text x="90" y="656.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Market Trades (WS)</text>
+<text x="90" y="671.8000000000001" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Finnhub live trade feed</text>
+<rect x="217.0" y="558" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#2563eb" stroke-width="2"/>
+<g transform="translate(243.0,584.0) scale(1.4167)" fill="#2563eb"><path fill="currentColor" d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M7,7H17V9H7V7M7,11H9V13H7V11M7,15H9V17H7V15M11,11H13V13H11V11M11,15H13V17H11V15M15,11H17V17H15V11Z"/></g>
+<text x="260" y="656.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Flink 15-min Window</text>
+<text x="260" y="671.8000000000001" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">price-move % · volume ratio</text>
+<polygon points="430,566 480,601 430,636 380,601" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+<text x="430" y="606" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Breach?</text>
+<rect x="557.0" y="558" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#0f766e" stroke-width="2"/>
+<g transform="translate(583.0,584.0) scale(1.4167)" fill="#0f766e"><path fill="currentColor" d="M12,2A2,2 0 0,1 14,4C14,4.74 13.6,5.39 13,5.73V7H14A7,7 0 0,1 21,14H22A1,1 0 0,1 23,15V18A1,1 0 0,1 22,19H21V20A2,2 0 0,1 19,22H5A2,2 0 0,1 3,20V19H2A1,1 0 0,1 1,18V15A1,1 0 0,1 2,14H3A7,7 0 0,1 10,7H11V5.73C10.4,5.39 10,4.74 10,4A2,2 0 0,1 12,2M7.5,13A2.5,2.5 0 0,0 5,15.5A2.5,2.5 0 0,0 7.5,18A2.5,2.5 0 0,0 10,15.5A2.5,2.5 0 0,0 7.5,13M16.5,13A2.5,2.5 0 0,0 14,15.5A2.5,2.5 0 0,0 16.5,18A2.5,2.5 0 0,0 19,15.5A2.5,2.5 0 0,0 16.5,13Z"/></g>
+<text x="600" y="656.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">AI Catalyst Check</text>
+<text x="600" y="671.8000000000001" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">gpt-4o-mini + embed</text>
+<rect x="897.0" y="558" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#2563eb" stroke-width="2"/>
+<g transform="translate(923.0,584.0) scale(1.4167)" fill="#2563eb"><path fill="currentColor" d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9L10,17Z"/></g>
+<text x="940" y="656.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Alert Engine</text>
+<text x="940" y="671.8000000000001" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">dedup · 30-day mute · cap</text>
+<circle cx="1090" cy="601" r="34" fill="#ffffff" stroke="#178a3e" stroke-width="2.2"/>
+<g transform="translate(1077,588) scale(1.0833)" fill="#178a3e"><path fill="currentColor" d="M12,2C6.5,2 2,6.5 2,12S6.5,22 12,22S22,17.5 22,12S17.5,2 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z"/></g>
+<text x="1090" y="653" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#178a3e">Alert delivered</text>
+<text x="1090" y="668" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#178a3e">bell + Risk tab</text>
+<line x1="133" y1="601" x2="217" y2="601" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<line x1="303" y1="601" x2="380" y2="601" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<line x1="480" y1="601" x2="557" y2="601" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<text x="515" y="586" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#2563eb">yes</text>
+<line x1="643" y1="601" x2="897" y2="601" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<line x1="983" y1="601" x2="1052" y2="601" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<circle cx="430" cy="751" r="34" fill="#ffffff" stroke="#7a7a7a" stroke-width="2.2"/>
+<g transform="translate(417,738) scale(1.0833)" fill="#7a7a7a"><path fill="currentColor" d="M12,2C6.5,2 2,6.5 2,12S6.5,22 12,22S22,17.5 22,12S17.5,2 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z"/></g>
+<text x="430" y="803" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#7a7a7a">Logged — no alert</text>
+<line x1="430" y1="636" x2="430" y2="717" stroke="#7a7a7a" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<text x="465" y="623" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#7a7a7a">no</text>
+<text x="60" y="865" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#3a3a3a">Daily scheduled jobs — same Flink/streaming EC2, two independent cron-triggered pipelines</text>
+<rect x="47.0" y="898" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#5b5b5b" stroke-width="2"/>
+<g transform="translate(73.0,924.0) scale(1.4167)" fill="#5b5b5b"><path fill="currentColor" d="M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,8V18H20V8H4M6,10H16V12H6V10M6,14H13V16H6V14Z"/></g>
+<text x="90" y="996.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Daily Risk Job</text>
+<text x="90" y="1011.8000000000001" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">cron (EventBridge)</text>
+<rect x="217.0" y="898" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#2563eb" stroke-width="2"/>
+<g transform="translate(243.0,924.0) scale(1.4167)" fill="#2563eb"><path fill="currentColor" d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M7,7H17V9H7V7M7,11H9V13H7V11M7,15H9V17H7V15M11,11H13V13H11V11M11,15H13V17H11V15M15,11H17V17H15V11Z"/></g>
+<text x="260" y="996.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">risk_job.py</text>
+<text x="260" y="1011.8000000000001" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">VaR · stress · factor</text>
+<circle cx="430" cy="941" r="34" fill="#ffffff" stroke="#178a3e" stroke-width="2.2"/>
+<g transform="translate(417,928) scale(1.0833)" fill="#178a3e"><path fill="currentColor" d="M12,2C6.5,2 2,6.5 2,12S6.5,22 12,22S22,17.5 22,12S17.5,2 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z"/></g>
+<text x="430" y="993" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#178a3e">Risk_Metrics updated</text>
+<text x="430" y="1008" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#178a3e">+ threshold alerts fire</text>
+<line x1="133" y1="941" x2="217" y2="941" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<line x1="303" y1="941" x2="396" y2="941" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<rect x="557.0" y="898" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#5b5b5b" stroke-width="2"/>
+<g transform="translate(583.0,924.0) scale(1.4167)" fill="#5b5b5b"><path fill="currentColor" d="M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,8V18H20V8H4M6,10H16V12H6V10M6,14H13V16H6V14Z"/></g>
+<text x="600" y="996.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Daily EOD Job</text>
+<text x="600" y="1011.8000000000001" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">price_update_job.py</text>
+<rect x="897.0" y="898" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#2563eb" stroke-width="2"/>
+<g transform="translate(923.0,924.0) scale(1.4167)" fill="#2563eb"><path fill="currentColor" d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M7,7H17V9H7V7M7,11H9V13H7V11M7,15H9V17H7V15M11,11H13V13H11V11M11,15H13V17H11V15M15,11H17V17H15V11Z"/></g>
+<text x="940" y="996.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Fetch EOD data</text>
+<text x="940" y="1011.8000000000001" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">yfinance + FRED</text>
+<circle cx="1090" cy="941" r="34" fill="#ffffff" stroke="#178a3e" stroke-width="2.2"/>
+<g transform="translate(1077,928) scale(1.0833)" fill="#178a3e"><path fill="currentColor" d="M12,2C6.5,2 2,6.5 2,12S6.5,22 12,22S22,17.5 22,12S17.5,2 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z"/></g>
+<text x="1090" y="993" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#178a3e">Written to</text>
+<text x="1090" y="1008" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#178a3e">Azure SQL + ChromaDB</text>
+<line x1="643" y1="941" x2="897" y2="941" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<line x1="983" y1="941" x2="1056" y2="941" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+<rect x="60" y="1050" width="1640" height="78" rx="10" fill="#f7f7f5" fill-opacity="1" stroke="#e3e3e3" stroke-width="1"/>
+<text x="90" y="1075" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#1a1a1a">By design:</text>
+<text x="90" y="1097" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#3a3a3a">none of the three pipelines above has a human-approval gate — once a question is submitted, or a threshold trips, or a cron fires, it runs fully autonomously end to end.</text>
+<text x="90" y="1115" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#3a3a3a">the only human sign-off anywhere in FinSight AI is operational: the two-environment CI/CD deploy approval in the Technical Architecture diagram, not a product feature.</text>
+<rect x="90" y="1170" width="16" height="16" rx="4" fill="#2563eb"/>
+<text x="114" y="1182" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="400" fill="#2a2a2a">Code — deterministic (math, routing, auth)</text>
+<rect x="431.2" y="1170" width="16" height="16" rx="4" fill="#7c3aed"/>
+<text x="455.2" y="1182" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="400" fill="#2a2a2a">LLM — reasoning / RAG / drafting</text>
+<rect x="706.4" y="1170" width="16" height="16" rx="4" fill="#0f766e"/>
+<text x="730.4" y="1182" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="400" fill="#2a2a2a">Hybrid — code + LLM</text>
+</svg>
