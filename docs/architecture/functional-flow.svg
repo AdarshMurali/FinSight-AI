@@ -46,8 +46,7 @@
 <line x1="600" y1="118" x2="260" y2="118" stroke="#111111" stroke-width="1.4"/>
 <line x1="260" y1="118" x2="260" y2="170" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
 <text x="470" y="105" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#6b6b6b">iterate ≤ MAX_TOOL_ITERATIONS (code-enforced cap)</text>
-<text x="60" y="515" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#3a3a3a">Always-on &amp; scheduled monitoring — independent of chat, all run on the Flink/streaming EC2</text>
-<text x="60" y="531" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#b45309">⏸ that EC2 is currently paused for cost savings — restarts in minutes, not removed from the design (see ARCHITECTURE.md)</text>
+<text x="60" y="525" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#3a3a3a">Live volatility monitoring — independent of chat, runs on the Flink/streaming EC2 during market hours</text>
 <rect x="47.0" y="558" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#5b5b5b" stroke-width="2"/>
 <g transform="translate(73.0,584.0) scale(1.4167)" fill="#5b5b5b"><path fill="currentColor" d="M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,8V18H20V8H4M6,10H16V12H6V10M6,14H13V16H6V14Z"/></g>
 <text x="90" y="656.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Market Trades (WS)</text>
@@ -81,7 +80,7 @@
 <text x="430" y="803" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#7a7a7a">Logged — no alert</text>
 <line x1="430" y1="636" x2="430" y2="717" stroke="#7a7a7a" stroke-width="1.4" marker-end="url(#arrowhead)"/>
 <text x="465" y="623" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#7a7a7a">no</text>
-<text x="60" y="865" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#3a3a3a">Daily scheduled jobs — same paused Flink/streaming EC2, two independent cron-triggered pipelines</text>
+<text x="60" y="865" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#3a3a3a">Daily scheduled jobs — same Flink/streaming EC2, two independent cron-triggered pipelines</text>
 <rect x="47.0" y="898" width="86" height="86" rx="18" fill="#ffffff" fill-opacity="1" stroke="#5b5b5b" stroke-width="2"/>
 <g transform="translate(73.0,924.0) scale(1.4167)" fill="#5b5b5b"><path fill="currentColor" d="M4,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M4,8V18H20V8H4M6,10H16V12H6V10M6,14H13V16H6V14Z"/></g>
 <text x="90" y="996.2" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1a1a1a">Daily Risk Job</text>
@@ -111,7 +110,7 @@
 <line x1="643" y1="941" x2="897" y2="941" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
 <line x1="983" y1="941" x2="1056" y2="941" stroke="#111111" stroke-width="1.4" marker-end="url(#arrowhead)"/>
 <rect x="60" y="1050" width="1640" height="78" rx="10" fill="#f7f7f5" fill-opacity="1" stroke="#e3e3e3" stroke-width="1"/>
-<text x="90" y="1075" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#1a1a1a">Key difference from MarginMaestro:</text>
+<text x="90" y="1075" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#1a1a1a">By design:</text>
 <text x="90" y="1097" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#3a3a3a">none of the three pipelines above has a human-approval gate — once a question is submitted, or a threshold trips, or a cron fires, it runs fully autonomously end to end.</text>
 <text x="90" y="1115" text-anchor="start" font-family="Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#3a3a3a">the only human sign-off anywhere in FinSight AI is operational: the two-environment CI/CD deploy approval in the Technical Architecture diagram, not a product feature.</text>
 <rect x="90" y="1170" width="16" height="16" rx="4" fill="#2563eb"/>

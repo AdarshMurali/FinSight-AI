@@ -6,7 +6,7 @@
 
 FinSight AI is an AI-powered portfolio-intelligence platform for hedge funds and institutional investors. A fund manager signs in and can: browse their portfolios' positions and performance, ask a conversational AI assistant free-form questions about that portfolio and have it pull live data to answer, see risk analytics (VaR, stress tests, factor exposure), get proactive alerts when risk crosses a threshold or a market event plausibly touches a holding, and export a portfolio report. An admin sees every portfolio in the firm rather than just their own.
 
-Unlike a traditional dashboard, the centerpiece feature — **AI chat** — doesn't run a fixed report. It's agentic: given a question, GPT-4o decides for itself which of six tools to call (portfolio data, position history, market-context search, market events, risk analysis, live quotes), executes them, and only then drafts a grounded answer. See [`docs/architecture/functional-flow.svg`](docs/architecture/functional-flow.svg) for that flow end to end, alongside the two further pipelines that run independently of anyone using the chat: live volatility detection and a pair of daily scheduled jobs (risk metrics, end-of-day data capture). All three of those run on a second EC2 that's currently paused for cost savings — see §5.
+Unlike a traditional dashboard, the centerpiece feature — **AI chat** — doesn't run a fixed report. It's agentic: given a question, GPT-4o decides for itself which of six tools to call (portfolio data, position history, market-context search, market events, risk analysis, live quotes), executes them, and only then drafts a grounded answer. See [`docs/architecture/functional-flow.svg`](docs/architecture/functional-flow.svg) for that flow end to end, alongside the two further pipelines that run independently of anyone using the chat: live volatility detection and a pair of daily scheduled jobs (risk metrics, end-of-day data capture) — see §5.
 
 ## 2. Users and access
 
@@ -46,10 +46,10 @@ Three kinds, all delivered automatically (no chat interaction required):
 
 A sidebar bell shows an unread count (polled every 60s); alerts also surface inline on the Risk Analytics tab.
 
-All three depend on the daily risk job and the live volatility-detection pipeline described in §5 — both run on the second, currently-paused EC2. With that instance off, threshold and AI-generated alerts don't get fresh input; this is a cost decision, not a missing feature (see §5 and `ARCHITECTURE.md` §4).
+Threshold and AI-generated alerts both depend on the daily risk job described in §5, which runs on the streaming EC2 alongside live volatility detection (see `ARCHITECTURE.md` §4 for the market-hours schedule both run on).
 
 ### 3.8 Keeping the data current — daily end-of-day capture
-A separate scheduled job (`price_update_job.py`) pulls each day's OHLCV prices, dividends, splits, and macro indicators (yfinance + FRED) and writes them into Azure SQL and ChromaDB, so the next trading day's dashboards, risk numbers, and AI answers are working from current data rather than a stale snapshot. Like the alert pipeline, this runs on the paused streaming EC2 and is not currently executing — restarting the instance resumes it immediately.
+A separate scheduled job (`price_update_job.py`) pulls each day's OHLCV prices, dividends, splits, and macro indicators (yfinance + FRED) and writes them into Azure SQL and ChromaDB, so the next trading day's dashboards, risk numbers, and AI answers are working from current data rather than a stale snapshot.
 
 ### 3.9 MCP server — using FinSight AI from outside the app
 FinSight AI exposes eight tools (list/summarize portfolios, positions, risk, alerts, market events, RAG search, refresh risk) over an MCP SSE endpoint, so a portfolio manager can query their live data directly from Claude Desktop, Cursor, or VS Code without opening the web app. **Caveat:** the public endpoint authenticates once at startup as a single admin identity, so any MCP client that connects to it currently sees all 50 portfolios, not just one manager's — see `ARCHITECTURE.md` §6 for the full explanation and the workaround (running the server locally in stdio mode with a manager's own token).
@@ -71,13 +71,13 @@ All three are diagrammed in [`docs/architecture/functional-flow.svg`](docs/archi
 2. **Live volatility detection** (§3.7) — runs continuously during market hours: live trade ticks feed a Flink windowed aggregation; a breach either gets logged silently (no catalyst worth surfacing) or triggers an AI catalyst check and lands as a delivered alert.
 3. **Daily scheduled jobs** (§3.7, §3.8) — two independent cron-triggered pipelines: `risk_job.py` recomputes VaR/stress/factor exposure and feeds the same threshold-alert engine as flow 2; `price_update_job.py` refreshes the day's OHLCV/dividends/macro data into Azure SQL and ChromaDB.
 
-Flows 2 and 3 both run on the second, streaming EC2 — see [`ARCHITECTURE.md`](ARCHITECTURE.md) §4 for why that instance is currently powered off and how quickly it comes back.
+Flows 2 and 3 both run on the second, streaming EC2 — see [`ARCHITECTURE.md`](ARCHITECTURE.md) §4 for exactly how its market-hours schedule works.
 
-Color-coding on the diagram follows the same convention as the companion MarginMaestro project: **blue** = deterministic code (math, routing, auth), **purple** = LLM (reasoning/RAG/drafting), **teal** = hybrid (code + LLM together). FinSight AI's product pipelines never use MarginMaestro's fourth category, the amber human-approval gate — see §4.
+Color-coding on the diagram: **blue** = deterministic code (math, routing, auth), **purple** = LLM (reasoning/RAG/drafting), **teal** = hybrid (code + LLM together). None of FinSight AI's product pipelines carry a fourth category — a human-approval gate — see §4.
 
 ## 6. Where to look
 
-- [`docs/architecture/functional-flow.svg`](docs/architecture/functional-flow.svg) — the two flows above, diagrammed
+- [`docs/architecture/functional-flow.svg`](docs/architecture/functional-flow.svg) — the three flows above, diagrammed
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — tech stack, deployment, and system design
 - `AUTH.md` — demo account credentials and login detail
 - `backend/rag/USAGE_EXAMPLES.md` — concrete RAG query examples
